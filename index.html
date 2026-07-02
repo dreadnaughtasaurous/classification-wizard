@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Classification Wizard — Austin Health</title>
+<meta name="description" content="Decision-support wizard for classifying roles under Schedule 3D Part 1 of the Health and Allied Services, Managers and Administrative Workers Enterprise Agreement 2025-2027." />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body x-data="wizardApp()" x-init="init()" :data-screen="screen">
+
+  <div class="app-shell">
+
+    <!-- ===================== Mobile top bar ===================== -->
+    <header class="topbar" role="banner">
+      <button class="topbar-menu-btn" type="button" @click="sidebarOpen = true" aria-label="Open navigation" aria-controls="sidebar" :aria-expanded="sidebarOpen">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3 6h18M3 12h18M3 18h18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      </button>
+      <span class="topbar-title">Classification Wizard</span>
+      <button class="theme-toggle theme-toggle--compact" type="button" @click="toggleTheme()" :aria-label="theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'">
+        <svg x-show="theme === 'light'" width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="4" stroke="currentColor" stroke-width="2"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        <svg x-show="theme === 'dark'" width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 0 0 10.5 10.5Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
+      </button>
+    </header>
+
+    <!-- Mobile drawer backdrop -->
+    <div class="drawer-backdrop" x-show="sidebarOpen" x-transition.opacity @click="sidebarOpen = false" x-cloak></div>
+
+    <!-- ===================== Sidebar ===================== -->
+    <nav class="sidebar" id="sidebar" :class="{ 'sidebar--open': sidebarOpen }" aria-label="Wizard progress">
+      <div class="sidebar-header">
+        <div class="brand">
+          <span class="brand-mark" aria-hidden="true">CW</span>
+          <span class="brand-name">Classification<br/>Wizard</span>
+        </div>
+        <button class="theme-toggle" type="button" @click="toggleTheme()" :aria-label="theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'">
+          <svg x-show="theme === 'light'" width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="4" stroke="currentColor" stroke-width="2"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          <svg x-show="theme === 'dark'" width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 0 0 10.5 10.5Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
+        </button>
+        <button class="drawer-close" type="button" @click="sidebarOpen = false" aria-label="Close navigation">&times;</button>
+      </div>
+
+      <p class="sidebar-subtitle">Schedule 3D Part 1 &middot; Grades 1A&ndash;11</p>
+
+      <ol class="step-list">
+        <li>
+          <button type="button" class="step" :class="stepStatus('intro')" @click="jumpTo('intro')" :disabled="!canJumpTo('intro')">
+            <span class="step-dot" aria-hidden="true"></span>
+            <span class="step-label">About this role</span>
+          </button>
+        </li>
+        <li>
+          <button type="button" class="step" :class="stepStatus('scope')" @click="jumpTo('scope')" :disabled="!canJumpTo('scope')">
+            <span class="step-dot" aria-hidden="true"></span>
+            <span class="step-label">Eligibility check</span>
+          </button>
+        </li>
+        <li>
+          <button type="button" class="step" :class="stepStatus('override')" @click="jumpTo('override')" :disabled="!canJumpTo('override')">
+            <span class="step-dot" aria-hidden="true"></span>
+            <span class="step-label">Named position check</span>
+          </button>
+        </li>
+        <template x-for="d in domainOrder" :key="d">
+          <li>
+            <button type="button" class="step step--domain" :class="stepStatus(d)" @click="jumpTo(d)" :disabled="!canJumpTo(d)">
+              <span class="step-dot" aria-hidden="true"></span>
+              <span class="step-label" x-text="domainMeta[d].name"></span>
+              <span class="step-count" x-show="!overrideResult" x-text="domainAnsweredCount(d) + '/' + 4"></span>
+            </button>
+          </li>
+        </template>
+        <li>
+          <button type="button" class="step step--results" :class="stepStatus('results')" @click="jumpTo('results')" :disabled="!canJumpTo('results')">
+            <span class="step-dot" aria-hidden="true"></span>
+            <span class="step-label">Results</span>
+          </button>
+        </li>
+      </ol>
+
+      <p class="sidebar-footnote">Decision-support tool only.<br/>HR must confirm final classification.</p>
+    </nav>
+
+    <!-- ===================== Main panel ===================== -->
+    <main class="main-panel" id="main-content">
+
+      <!-- ---------- INTRO ---------- -->
+      <section class="screen" x-show="screen === 'intro'" x-cloak>
+        <p class="eyebrow">Before you start</p>
+        <h1>Tell us about the role</h1>
+        <p class="lede">This information appears on your results summary. Only the role title is required.</p>
+
+        <form class="intro-form" @submit.prevent="submitIntro()">
+          <div class="field">
+            <label for="roleTitle">Role title <span aria-hidden="true">*</span></label>
+            <input id="roleTitle" type="text" x-model="context.roleTitle" placeholder="e.g. Ward Clerk, Finance Manager" autocomplete="off" required />
+            <p class="field-error" x-show="introTouched && !context.roleTitle.trim()" x-cloak>Enter a role title to continue.</p>
+          </div>
+          <div class="field">
+            <label for="positionName">Position or employee name <span class="optional">(optional)</span></label>
+            <input id="positionName" type="text" x-model="context.positionName" autocomplete="off" />
+          </div>
+          <div class="field">
+            <label for="managerName">Your name <span class="optional">(optional)</span></label>
+            <input id="managerName" type="text" x-model="context.managerName" autocomplete="off" />
+          </div>
+          <div class="field">
+            <label for="assessDate">Date</label>
+            <input id="assessDate" type="date" x-model="context.date" />
+          </div>
+          <button type="submit" class="btn btn-primary btn-large">Start eligibility check</button>
+        </form>
+      </section>
+
+      <!-- ---------- SCOPE ---------- -->
+      <section class="screen" x-show="screen === 'scope'" x-cloak>
+        <p class="eyebrow">Eligibility check</p>
+        <h1 x-text="currentScopeQuestion.text"></h1>
+        <p class="lede">This determines whether Schedule 3D Part 1 applies to this role.</p>
+
+        <div class="options" role="radiogroup" :aria-label="currentScopeQuestion.text">
+          <button type="button" class="option-btn" :class="{ selected: scopeAnswers[currentScopeQuestion.id] === true }" role="radio" :aria-checked="scopeAnswers[currentScopeQuestion.id] === true" @click="answerScope(true)">
+            <span class="option-key">1</span>
+            <span class="option-label">Yes</span>
+          </button>
+          <button type="button" class="option-btn" :class="{ selected: scopeAnswers[currentScopeQuestion.id] === false }" role="radio" :aria-checked="scopeAnswers[currentScopeQuestion.id] === false" @click="answerScope(false)">
+            <span class="option-key">2</span>
+            <span class="option-label">No</span>
+          </button>
+        </div>
+
+        <div class="nav-row">
+          <button type="button" class="btn btn-ghost" @click="scopeBack()">&larr; Back</button>
+          <span class="nav-hint">Question <span x-text="scopeStepIndex + 1"></span> of <span x-text="scopeQuestions.length"></span></span>
+        </div>
+      </section>
+
+      <!-- ---------- OUT OF SCOPE ---------- -->
+      <section class="screen" x-show="screen === 'outOfScope'" x-cloak>
+        <p class="eyebrow eyebrow--warning">Out of scope</p>
+        <h1>This wizard doesn't apply to this role</h1>
+        <div class="callout callout--info" x-show="outOfScope">
+          <p x-text="outOfScope && outOfScope.message"></p>
+          <p class="callout-clause" x-show="outOfScope && outOfScope.clause">Reference: clause <span x-text="outOfScope && outOfScope.clause"></span></p>
+        </div>
+        <button type="button" class="btn btn-primary" @click="resetWizard()">Start a new assessment</button>
+      </section>
+
+      <!-- ---------- NAMED OVERRIDE ---------- -->
+      <section class="screen" x-show="screen === 'override'" x-cloak>
+        <p class="eyebrow">Named position check</p>
+        <h1 x-text="overrideQuestion.text"></h1>
+        <p class="lede">Some positions are assigned a mandatory grade by the Agreement, regardless of scored assessment. Check if this role matches one below.</p>
+
+        <div class="options options--override" role="radiogroup" :aria-label="overrideQuestion.text">
+          <template x-for="(opt, i) in overrideQuestion.options" :key="opt.letter">
+            <button type="button" class="option-btn" :class="{ selected: overrideKey === opt.key }" role="radio" :aria-checked="overrideKey === opt.key" @click="selectOverride(opt.key)">
+              <span class="option-key" x-text="i + 1"></span>
+              <span class="option-label">
+                <span x-text="opt.label"></span>
+                <span class="option-meta" x-show="opt.grade" x-text="opt.grade + ' · clause ' + opt.clause"></span>
+              </span>
+            </button>
+          </template>
+        </div>
+
+        <div class="nav-row">
+          <button type="button" class="btn btn-ghost" @click="overrideBack()">&larr; Back</button>
+          <button type="button" class="btn btn-primary" :disabled="!overrideKey" @click="overrideNext()">
+            <span x-text="overrideKey && overrideKey !== 'none' ? 'View result' : 'Continue'"></span> &rarr;
+          </button>
+        </div>
+      </section>
+
+      <!-- ---------- DOMAIN QUESTIONS ---------- -->
+      <section class="screen" x-show="screen === 'question'" x-cloak>
+        <template x-if="currentQuestion">
+          <div>
+            <p class="eyebrow">
+              Domain <span x-text="currentDomainIndex + 1"></span> of 6:
+              <span x-text="domainMeta[currentDomainId].name"></span>
+              &middot; Question <span x-text="currentQuestion.indexInDomain + 1"></span> of <span x-text="currentQuestion.domainTotal"></span>
+            </p>
+            <h1 x-text="currentQuestion.text"></h1>
+
+            <div class="progress-track" aria-hidden="true">
+              <div class="progress-fill" :style="`width: ${(answeredCount / totalQuestions) * 100}%`"></div>
+            </div>
+
+            <div class="options" role="radiogroup" :aria-label="currentQuestion.text">
+              <template x-for="(opt, i) in currentQuestion.options" :key="opt.letter">
+                <button type="button" class="option-btn" :class="{ selected: answers[currentQuestion.qid] === opt.letter }" role="radio" :aria-checked="answers[currentQuestion.qid] === opt.letter" @click="selectAnswer(opt.letter)">
+                  <span class="option-key" x-text="i + 1"></span>
+                  <span class="option-label" x-text="opt.label"></span>
+                </button>
+              </template>
+            </div>
+
+            <div class="nav-row">
+              <button type="button" class="btn btn-ghost" @click="questionBack()">&larr; Back</button>
+              <button type="button" class="btn btn-primary" :disabled="!answers[currentQuestion.qid]" @click="questionNext()">
+                <span x-text="questionCursor === totalQuestions - 1 ? 'See results' : 'Next'"></span> &rarr;
+              </button>
+            </div>
+          </div>
+        </template>
+      </section>
+
+      <!-- ---------- RESULTS ---------- -->
+      <section class="screen screen--results" x-show="screen === 'results'" x-cloak x-effect="
+        screen === 'results' && finalResult && finalResult.type === 'scored'
+          ? ChartHelper.renderRadar($refs.radarCanvas, finalResult.domainScores, domainOrder, domainMeta)
+          : null
+      ">
+        <template x-if="finalResult">
+          <div>
+            <p class="eyebrow">Recommendation</p>
+            <div class="grade-banner">
+              <span class="grade-banner-label">Recommended grade</span>
+              <span class="grade-banner-value" x-text="finalResult.grade"></span>
+            </div>
+
+            <!-- HR review banner -->
+            <div class="callout callout--warning" x-show="finalResult.type === 'scored' && finalResult.hrReviewRequired" x-cloak>
+              <h2>HR review recommended</h2>
+              <ul>
+                <li x-show="finalResult.boundaryFlag">
+                  This score is close to a grade boundary — <strong x-text="finalResult.adjacentGrade"></strong> may also be appropriate. A person should confirm which grade best fits before finalising.
+                </li>
+                <template x-for="flag in (finalResult.mismatchFlags || [])" :key="flag.id">
+                  <li x-text="flag.message"></li>
+                </template>
+              </ul>
+            </div>
+
+            <!-- Override reasoning -->
+            <div class="reasoning-block" x-show="finalResult.type === 'override'">
+              <h2>Why this grade</h2>
+              <p>
+                This is a mandatory named-position classification: <strong x-text="finalResult.label"></strong>,
+                per clause <span x-text="finalResult.clause"></span> of Schedule 3D Part 1. It bypasses the scored
+                assessment entirely.
+              </p>
+            </div>
+
+            <!-- Scored reasoning -->
+            <template x-if="finalResult.type === 'scored'">
+              <div>
+                <div class="chart-block">
+                  <h2>Domain scores</h2>
+                  <div class="chart-wrap">
+                    <canvas x-ref="radarCanvas" width="360" height="360" role="img" :aria-label="'Radar chart of domain scores: ' + domainOrder.map(d => domainMeta[d].code + ' ' + finalResult.domainScores[d]).join(', ')"></canvas>
+                  </div>
+                  <table class="score-table">
+                    <caption class="sr-only">Domain score data table (accessible alternative to the radar chart above)</caption>
+                    <thead>
+                      <tr><th scope="col">Domain</th><th scope="col">Score (0–100)</th></tr>
+                    </thead>
+                    <tbody>
+                      <template x-for="d in domainOrder" :key="d">
+                        <tr>
+                          <td x-text="domainMeta[d].name"></td>
+                          <td x-text="finalResult.domainScores[d]"></td>
+                        </tr>
+                      </template>
+                    </tbody>
+                  </table>
+                  <p class="chart-footnote">
+                    Weighted total: <strong x-text="finalResult.weightedTotal"></strong>/100
+                    &middot; Weighting band: <span x-text="finalResult.band.label"></span>
+                  </p>
+                </div>
+
+                <div class="reasoning-block">
+                  <h2>Clause-based reasoning</h2>
+                  <template x-for="d in domainOrder" :key="d">
+                    <details class="reasoning-domain">
+                      <summary>
+                        <span x-text="domainMeta[d].name"></span>
+                        <span class="reasoning-score" x-text="finalResult.domainScores[d] + '/100'"></span>
+                      </summary>
+                      <ul>
+                        <template x-for="item in finalResult.domainDetails[d]" :key="item.qid">
+                          <li>
+                            <span x-text="item.label"></span>
+                            <span class="reasoning-clause" x-show="item.clause" x-text="'(clause ' + item.clause + ')'"></span>
+                          </li>
+                        </template>
+                      </ul>
+                    </details>
+                  </template>
+                </div>
+              </div>
+            </template>
+
+            <!-- Summary for copy/export -->
+            <div class="summary-block">
+              <h2>Summary for email or HR form</h2>
+              <p class="summary-prose" x-text="summaryProse"></p>
+              <div class="summary-actions">
+                <button type="button" class="btn btn-secondary" @click="copySummary()">
+                  <span x-show="!copyConfirmed">Copy summary</span>
+                  <span x-show="copyConfirmed" x-cloak>Copied &#10003;</span>
+                </button>
+                <button type="button" class="btn btn-secondary" @click="downloadSummary()">Download as text</button>
+                <button type="button" class="btn btn-secondary btn-print-only" @click="printResults()">Print this page</button>
+              </div>
+            </div>
+
+            <p class="disclaimer">
+              This is a classification recommendation, not a final determination. HR must confirm final classification.
+            </p>
+
+            <button type="button" class="btn btn-ghost" @click="resetWizard()">Start a new assessment</button>
+          </div>
+        </template>
+      </section>
+
+    </main>
+  </div>
+
+  <script src="js/questions-data.js" defer></script>
+  <script src="js/scoring.js" defer></script>
+  <script src="js/chart.js" defer></script>
+  <script src="js/app.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js" defer></script>
+</body>
+</html>
