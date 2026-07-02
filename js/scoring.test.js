@@ -40,10 +40,6 @@ function answerAllDomains(letter) {
   return answers;
 }
 
-console.log('\n--- Scope exclusion (clauses 1.2 / 1.3) ---');
-assertEqual(Scoring.checkScopeExclusion({ rwhRch: true, executivePolicy: false }).clause, '1.2', 'RWH/RCH role returns clause 1.2');
-assertEqual(Scoring.checkScopeExclusion({ rwhRch: false, executivePolicy: true }).clause, '1.3', 'HEERP-covered role returns clause 1.3');
-assertEqual(Scoring.checkScopeExclusion({ rwhRch: false, executivePolicy: false }), null, 'In-scope role returns null');
 
 console.log('\n--- Named position overrides (clauses 3.4(a), 4.4(a), 5.4(a)-(c)) ---');
 assertEqual(Scoring.checkNamedOverride('interpreter_unqualified'), { grade: 'Grade 1', clause: '3.4(a)', label: 'Interpreter, unqualified' }, 'Unqualified interpreter → Grade 1');
@@ -68,12 +64,18 @@ assertEqual(Scoring.selectWeightBand(34).id, 'band_4_7', '34.00 → band_4_7');
 assertEqual(Scoring.selectWeightBand(69.99).id, 'band_4_7', '69.99 → band_4_7');
 assertEqual(Scoring.selectWeightBand(70).id, 'band_8_11', '70.00 → band_8_11');
 
-console.log('\n--- Boundary flag (±5 points) ---');
-assertEqual(Scoring.checkBoundaryFlag(29), { flagged: true, adjacentGrade: 'Grade 2', boundary: 25 }, '29 is within 5 of the 25 boundary → possible Grade 2');
-assertEqual(Scoring.checkBoundaryFlag(21), { flagged: true, adjacentGrade: 'Grade 3', boundary: 25 }, '21 is within 5 of the 25 boundary → possible Grade 3');
-assertEqual(Scoring.checkBoundaryFlag(50), { flagged: true, adjacentGrade: 'Grade 6', boundary: 52 }, '50 is within 5 of the 52 boundary → possible Grade 6');
-assertEqual(Scoring.checkBoundaryFlag(1).flagged, false, '1 is more than 5 from the nearest boundary (7.5) → not flagged');
-assertEqual(Scoring.checkBoundaryFlag(100).flagged, false, '100 is 5.5 from the 94.5 boundary → not flagged');
+console.log('\n--- Boundary signals (band-relative advisory + nested review tolerance) ---');
+// Boundary at 25 (Grade2/Grade3): band widths 8.99/8.99 → advisory tolerance 1.62, review tolerance = min(1.5, 1.62) = 1.5
+assertEqual(Scoring.checkBoundarySignals(23.4), { boundaryNote: true, reviewRequired: false, adjacentGrade: 'Grade 3', boundary: 25 }, '23.4 (1.6 from 25) is inside advisory (1.62) but outside review (1.5) → note only, no HR review');
+assertEqual(Scoring.checkBoundarySignals(23.5), { boundaryNote: true, reviewRequired: true, adjacentGrade: 'Grade 3', boundary: 25 }, '23.5 (1.5 from 25) is inside review tolerance → note + review required');
+assertEqual(Scoring.checkBoundarySignals(29).boundaryNote, false, '29 (4 pts from 25) is well outside the new ~1.6pt tolerance → no note (old ±5 logic incorrectly flagged this)');
+assertEqual(Scoring.checkBoundarySignals(50).boundaryNote, false, '50 (2 pts from 52) is outside the new ~1.6pt tolerance → no note (old ±5 logic incorrectly flagged this)');
+assertEqual(Scoring.checkBoundarySignals(51).reviewRequired, true, '51 (1 pt from 52) is inside review tolerance → review required');
+assertEqual(Scoring.checkBoundarySignals(1).boundaryNote, false, '1 is far from the nearest boundary (7.5) → no note');
+assertEqual(Scoring.checkBoundarySignals(100).boundaryNote, false, '100 is 5.5 from the 94.5 boundary → no note');
+// Grade 10/11 boundary (94.5): narrowest bands (7.49/5.51) → advisory tolerance ≈0.99, review tolerance capped at 0.99 (not 1.5)
+assertEqual(Scoring.checkBoundarySignals(93.4).boundaryNote, false, '93.4 (1.1 from 94.5) is outside the narrow ~0.99pt tolerance at this boundary → no note');
+assertEqual(Scoring.checkBoundarySignals(93.51), { boundaryNote: true, reviewRequired: true, adjacentGrade: 'Grade 11', boundary: 94.5 }, '93.51 (0.99 from 94.5) is inside the narrow tolerance → note + review required (nested, since review = advisory here)');
 
 console.log('\n--- Mismatch flags ---');
 assertTrue(Scoring.checkMismatchFlags({ LTM: 75, AA: 25, KSE: 0, OIS: 0, CII: 0 }).some((f) => f.id === 'leadership_without_autonomy'), 'LTM≥50 & AA<50 → leadership_without_autonomy');
@@ -91,14 +93,14 @@ console.log('\n--- Domain averaging (KSE = KSE1–3 only, structural check) ---'
 console.log('\n--- Edge case: entry-level clerical employee (all "A" answers) ---');
 {
   const results = Scoring.runFullScoring(answerAllDomains('A'), QUESTIONS);
-  assertEqual(results.recommendedGrade, 'Grade 1A', 'All-A answers → Grade 1A');
+  assertEqual(results.grade, 'Grade 1A', 'All-A answers → Grade 1A');
   assertEqual(results.hrReviewRequired, false, 'All-A answers → no HR review flags');
 }
 
 console.log('\n--- Edge case: CEO / senior executive with Board delegations (all "E" answers) ---');
 {
   const results = Scoring.runFullScoring(answerAllDomains('E'), QUESTIONS);
-  assertEqual(results.recommendedGrade, 'Grade 11', 'All-E answers → Grade 11');
+  assertEqual(results.grade, 'Grade 11', 'All-E answers → Grade 11');
   assertEqual(results.band.id, 'band_8_11', 'All-E answers select the Grades 8–11 weighting band');
 }
 
@@ -118,7 +120,7 @@ console.log('\n--- Full pipeline smoke test (mixed mid-range answers) ---');
   assertEqual(results.initialAverage, 50, 'All-C answers → initial average of 50');
   assertEqual(results.band.id, 'band_4_7', 'Initial average of 50 selects band_4_7');
   assertEqual(results.weightedTotal, 50, 'Uniform 50s across all domains → weighted total of 50 regardless of weights');
-  assertEqual(results.recommendedGrade, 'Grade 5', 'Weighted total of 50 → Grade 5');
+  assertEqual(results.grade, 'Grade 5', 'Weighted total of 50 → Grade 5');
 }
 
 console.log(`\n${pass} passed, ${fail} failed.\n`);

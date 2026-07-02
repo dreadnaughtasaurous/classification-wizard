@@ -24,7 +24,33 @@
 
   // Transition points between adjacent grades. BOUNDARIES[i] == GRADE_LOOKUP[i+1].min
   const BOUNDARIES = [7.5, 16, 25, 34, 43, 52, 61, 70, 79, 87, 94.5];
-  const BOUNDARY_TOLERANCE = 5;
+
+  // Band-relative advisory tolerance: a boundary "note" (non-blocking) fires within
+  // 18% of the narrower of the two grade bands either side of that boundary. This
+  // replaces a flat point value because bands range from 5.51 points wide (Grade 11)
+  // to 8.99 points wide (most mid grades) — a flat tolerance sized for one width is
+  // wrong for the others. See scoring-and-recommendation-logic.md "Boundary and
+  // tie-break logic" for the full rationale.
+  const ADVISORY_TOLERANCE_RATIO = 0.18;
+
+  // HR-review proximity tolerance: a flat point value, but capped at the advisory
+  // tolerance for that boundary so the "review required" zone is always nested
+  // inside the "note" zone (never wider than it).
+  const REVIEW_TOLERANCE_POINTS = 1.5;
+
+  function bandWidth(gradeIndex) {
+    const g = GRADE_LOOKUP[gradeIndex];
+    return round2(g.max - g.min + 0.01); // restores true width across the 0.01 gap used for inclusive/exclusive display bounds
+  }
+
+  /** Returns { advisoryTolerance, reviewTolerance } for the boundary at BOUNDARIES[i]. */
+  function toleranceForBoundary(i) {
+    const widthBelow = bandWidth(i);
+    const widthAbove = bandWidth(i + 1);
+    const advisoryTolerance = round2(Math.min(widthBelow, widthAbove) * ADVISORY_TOLERANCE_RATIO);
+    const reviewTolerance = round2(Math.min(REVIEW_TOLERANCE_POINTS, advisoryTolerance));
+    return { advisoryTolerance, reviewTolerance };
+  }
 
   const WEIGHT_BANDS = {
     band_1A_3: { id: 'band_1A_3', label: 'Grades 1A–3', min: 0, max: 33.99, weights: { KSE: 25, PSJ: 25, AA: 20, LTM: 10, CII: 10, OIS: 10 } },
@@ -65,25 +91,6 @@
 
   function round2(n) {
     return Math.round(n * 100) / 100;
-  }
-
-  /** clauses 1.2 / 1.3 — stop the wizard before any scoring occurs. */
-  function checkScopeExclusion(scope) {
-    if (scope && scope.rwhRch) {
-      return {
-        outOfScope: true,
-        message: "This role sits outside Schedule 3D Part 1. Roles employed by the Royal Women's Hospital or the Royal Children's Hospital are covered by Schedule 3D Part 2 instead.",
-        clause: '1.2',
-      };
-    }
-    if (scope && scope.executivePolicy) {
-      return {
-        outOfScope: true,
-        message: 'This role sits outside Schedule 3D Part 1. Roles covered by the Health Executive Employment and Remuneration Policy are excluded from this classification structure.',
-        clause: '1.3',
-      };
-    }
-    return null;
   }
 
   /** clauses 3.4(a), 4.4(a), 5.4(a)-(c) — mandatory grade, bypasses all scoring. */
@@ -146,27 +153,38 @@
     return found ? found.grade : GRADE_LOOKUP[GRADE_LOOKUP.length - 1].grade;
   }
 
-  /** ±5-point boundary tolerance. Reports the nearest boundary and the grade on its other side. */
-  function checkBoundaryFlag(weightedTotal) {
-    let flagged = false;
+  /**
+   * Two-tier, band-relative boundary check.
+   *  - boundaryNote: non-blocking. The score is close enough to a boundary to be
+   *    worth showing the adjacent grade for reference, but is not by itself a
+   *    reason to demand HR sign-off — see ADVISORY_TOLERANCE_RATIO above.
+   *  - reviewRequired: blocking. The score is close enough that it is a genuine
+   *    toss-up between two grades — see REVIEW_TOLERANCE_POINTS above.
+   * Reports the nearest qualifying boundary and the grade on its other side.
+   */
+  function checkBoundarySignals(weightedTotal) {
+    let noteFlagged = false;
+    let reviewFlagged = false;
     let nearestDist = Infinity;
     let nearestIdx = -1;
     BOUNDARIES.forEach((b, i) => {
       const d = Math.abs(weightedTotal - b);
-      if (d <= BOUNDARY_TOLERANCE) {
-        flagged = true;
+      const { advisoryTolerance, reviewTolerance } = toleranceForBoundary(i);
+      if (d <= advisoryTolerance) {
+        noteFlagged = true;
         if (d < nearestDist) {
           nearestDist = d;
           nearestIdx = i;
         }
       }
+      if (d <= reviewTolerance) reviewFlagged = true;
     });
-    if (!flagged) return { flagged: false, adjacentGrade: null };
+    if (!noteFlagged) return { boundaryNote: false, reviewRequired: false, adjacentGrade: null, boundary: null };
     const boundary = BOUNDARIES[nearestIdx];
     const lowerGrade = GRADE_LOOKUP[nearestIdx].grade;
     const upperGrade = GRADE_LOOKUP[nearestIdx + 1].grade;
     const adjacentGrade = weightedTotal < boundary ? upperGrade : lowerGrade;
-    return { flagged: true, adjacentGrade, boundary };
+    return { boundaryNote: true, reviewRequired: reviewFlagged, adjacentGrade, boundary };
   }
 
   function checkMismatchFlags(domainScores) {
@@ -182,8 +200,8 @@
     const initialAverage = round2(average(Object.values(domainScores)));
     const band = selectWeightBand(initialAverage);
     const weightedTotal = calculateWeightedTotal(domainScores, band);
-    const recommendedGrade = lookupGrade(weightedTotal);
-    const boundary = checkBoundaryFlag(weightedTotal);
+    const grade = lookupGrade(weightedTotal);
+    const boundary = checkBoundarySignals(weightedTotal);
     const mismatchFlags = checkMismatchFlags(domainScores);
     return {
       domainScores,
@@ -191,11 +209,11 @@
       initialAverage,
       band,
       weightedTotal,
-      recommendedGrade,
-      boundaryFlag: boundary.flagged,
+      grade,
+      boundaryFlag: boundary.boundaryNote,
       adjacentGrade: boundary.adjacentGrade,
       mismatchFlags,
-      hrReviewRequired: boundary.flagged || mismatchFlags.length > 0,
+      hrReviewRequired: boundary.reviewRequired || mismatchFlags.length > 0,
     };
   }
 
@@ -205,13 +223,12 @@
     WEIGHT_BANDS,
     HARD_OVERRIDES,
     MISMATCH_RULES,
-    checkScopeExclusion,
     checkNamedOverride,
     computeDomainScores,
     selectWeightBand,
     calculateWeightedTotal,
     lookupGrade,
-    checkBoundaryFlag,
+    checkBoundarySignals,
     checkMismatchFlags,
     runFullScoring,
   };

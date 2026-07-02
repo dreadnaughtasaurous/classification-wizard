@@ -2,9 +2,8 @@
  * Classification Wizard — Alpine.js application state and flow control.
  *
  * Screen flow:
- *   intro -> scope (x2) -> [outOfScope, terminal]
- *                        -> override -> [results, terminal via named override]
- *                                     -> question (x23, grouped by domain) -> results
+ *   intro -> override -> [results, terminal via named override]
+ *                      -> question (x23, grouped by domain) -> results
  *
  * All scoring math lives in scoring.js; this file only orchestrates the
  * wizard flow and reads/writes Alpine state.
@@ -16,15 +15,20 @@ function wizardApp() {
     theme: 'light',
 
     // ---------- navigation ----------
-    screen: 'intro', // intro | scope | outOfScope | override | question | results
-    scopeStepIndex: 0,
+    screen: 'intro', // intro | override | question | results
     questionCursor: 0,
+    // Furthest point the user has reached in the linear flow. Used so that
+    // jumping back via the sidebar to review/change an earlier answer never
+    // loses the user's place — they can always return to exactly where they were.
+    furthestCursor: 0,
+    resultsReached: false,
+    resultsUpdatedNotice: false,
+    _lastResultsSnapshot: null,
     sidebarOpen: false,
+    _advanceTimer: null,
 
     // ---------- data captured ----------
-    context: { roleTitle: '', positionName: '', managerName: '', date: todayISO() },
-    scopeAnswers: { scope_rwh_rch: null, scope_executive_policy: null },
-    outOfScope: null, // { message, clause }
+    context: { roleTitle: '', date: todayISO() },
     overrideKey: null, // null until chosen; 'none' or a HARD_OVERRIDES key
     answers: {}, // { qid: letter }
 
@@ -35,7 +39,6 @@ function wizardApp() {
     // ---------- static references ----------
     domainOrder: DOMAIN_ORDER,
     domainMeta: DOMAIN_META,
-    scopeQuestions: SCOPE_QUESTIONS,
     overrideQuestion: KSE4_OVERRIDE_QUESTION,
     flatQuestions: buildFlatQuestions(),
 
@@ -93,115 +96,158 @@ function wizardApp() {
 
     // ================= sidebar step status =================
     stepStatus(stepId) {
-      const order = ['intro', 'scope', 'override', ...this.domainOrder, 'results'];
+      const order = ['intro', 'override', ...this.domainOrder, 'results'];
       const phaseOf = (s) => {
         if (s === 'intro') return 0;
-        if (s === 'scope') return 1;
-        if (s === 'override') return 2;
-        if (this.domainOrder.includes(s)) return 3 + this.domainOrder.indexOf(s);
-        if (s === 'results') return 9;
+        if (s === 'override') return 1;
+        if (this.domainOrder.includes(s)) return 2 + this.domainOrder.indexOf(s);
+        if (s === 'results') return 8;
         return -1;
       };
       let currentPhase;
       if (this.screen === 'intro') currentPhase = 0;
-      else if (this.screen === 'scope' || this.screen === 'outOfScope') currentPhase = 1;
-      else if (this.screen === 'override') currentPhase = 2;
-      else if (this.screen === 'question') currentPhase = 3 + this.currentDomainIndex;
-      else if (this.screen === 'results') currentPhase = 9;
+      else if (this.screen === 'override') currentPhase = 1;
+      else if (this.screen === 'question') currentPhase = 2 + this.currentDomainIndex;
+      else if (this.screen === 'results') currentPhase = 8;
       else currentPhase = 0;
 
       const target = phaseOf(stepId);
-      if (target < currentPhase) return 'done';
       if (target === currentPhase) return 'current';
-      return 'upcoming';
+
+      // "Done" tracks the furthest point ever reached, independent of where the
+      // user is currently looking — so a step doesn't drop back to "upcoming"
+      // just because they used the sidebar to review an earlier question.
+      let reachedPhase;
+      if (this.resultsReached) {
+        reachedPhase = 8;
+      } else if (this.overrideKey === 'none') {
+        const furthestQ = this.flatQuestions[this.furthestCursor];
+        reachedPhase = furthestQ ? 2 + this.domainOrder.indexOf(furthestQ.domain) : 2;
+      } else if (this.screen !== 'intro') {
+        reachedPhase = 1;
+      } else {
+        reachedPhase = 0;
+      }
+
+      return target <= reachedPhase ? 'done' : 'upcoming';
     },
     domainAnsweredCount(domainId) {
       return QUESTIONS[domainId].filter((q) => this.answers[q.qid]).length;
     },
     canJumpTo(stepId) {
-      if (this.overrideResult) return stepId === 'intro' || stepId === 'scope' || stepId === 'override' || stepId === 'results';
+      if (this.overrideResult) return stepId === 'intro' || stepId === 'override' || stepId === 'results';
       const status = this.stepStatus(stepId);
       return status === 'done' || status === 'current';
     },
     jumpTo(stepId) {
       if (!this.canJumpTo(stepId)) return;
+      this.clearAutoAdvance();
       this.sidebarOpen = false;
       if (stepId === 'intro') { this.screen = 'intro'; return; }
-      if (stepId === 'scope') { this.screen = 'scope'; this.scopeStepIndex = 0; return; }
       if (stepId === 'override') { this.screen = 'override'; return; }
-      if (stepId === 'results') { if (this.finalResult) this.screen = 'results'; return; }
+      if (stepId === 'results') { if (this.finalResult) this.enterResults(); return; }
       if (this.domainOrder.includes(stepId)) {
         const idx = this.flatQuestions.findIndex((q) => q.domain === stepId);
+        // Jumping via the sidebar only changes *where you're looking* — it never
+        // resets furthestCursor, so "Continue where you left off" always works.
         if (idx >= 0) { this.questionCursor = idx; this.screen = 'question'; }
       }
+    },
+
+    // ================= review mode (sidebar back-navigation) =================
+    get inReviewMode() {
+      return this.screen === 'question' && this.questionCursor < this.furthestCursor;
+    },
+    resumeProgress() {
+      this.clearAutoAdvance();
+      if (this.resultsReached) {
+        this.enterResults();
+      } else {
+        this.questionCursor = Math.min(this.furthestCursor, this.totalQuestions - 1);
+        this.screen = 'question';
+      }
+    },
+
+    // ================= results transition =================
+    // Single entry point for moving to the results screen. Snapshots the
+    // current answers/override so that if the user edits an earlier answer
+    // (via sidebar review) and comes back, they're told the recommendation
+    // has been recalculated rather than silently changing underneath them.
+    _snapshotAnswers() {
+      return JSON.stringify({ a: this.answers, o: this.overrideKey });
+    },
+    enterResults() {
+      const snap = this._snapshotAnswers();
+      this.resultsUpdatedNotice = this.resultsReached && this._lastResultsSnapshot !== null && this._lastResultsSnapshot !== snap;
+      this._lastResultsSnapshot = snap;
+      this.resultsReached = true;
+      this.screen = 'results';
     },
 
     // ================= intro =================
     submitIntro() {
       this.introTouched = true;
       if (!this.context.roleTitle.trim()) return;
-      this.screen = 'scope';
-      this.scopeStepIndex = 0;
+      this.screen = 'override';
     },
 
-    // ================= scope =================
-    get currentScopeQuestion() {
-      return this.scopeQuestions[this.scopeStepIndex];
-    },
-    answerScope(value) {
-      const q = this.currentScopeQuestion;
-      this.scopeAnswers[q.id] = value;
-      if (value === true) {
-        const key = q.id === 'scope_rwh_rch' ? { rwhRch: true, executivePolicy: false } : { rwhRch: false, executivePolicy: true };
-        this.outOfScope = Scoring.checkScopeExclusion(key);
-        this.screen = 'outOfScope';
-        return;
-      }
-      if (this.scopeStepIndex < this.scopeQuestions.length - 1) {
-        this.scopeStepIndex += 1;
-      } else {
-        this.screen = 'override';
+    // ================= typeform-style auto-advance =================
+    // Selecting an option auto-advances after a brief pause so the user sees
+    // their choice register (Typeform pattern). Manual Next/Back remain fully
+    // functional for keyboard users or anyone who wants to double-check first.
+    clearAutoAdvance() {
+      if (this._advanceTimer) {
+        clearTimeout(this._advanceTimer);
+        this._advanceTimer = null;
       }
     },
-    scopeBack() {
-      if (this.scopeStepIndex > 0) {
-        this.scopeStepIndex -= 1;
-      } else {
-        this.screen = 'intro';
-      }
+    scheduleAutoAdvance(fn) {
+      this.clearAutoAdvance();
+      this._advanceTimer = setTimeout(() => {
+        this._advanceTimer = null;
+        fn();
+      }, 380);
     },
 
     // ================= named override =================
     selectOverride(key) {
       this.overrideKey = key;
+      this.scheduleAutoAdvance(() => this.overrideNext());
     },
     overrideNext() {
+      this.clearAutoAdvance();
       if (!this.overrideKey) return;
       if (this.overrideKey === 'none') {
         this.questionCursor = 0;
+        this.furthestCursor = 0;
         this.screen = 'question';
       } else {
-        this.screen = 'results';
+        this.enterResults();
       }
     },
     overrideBack() {
-      this.screen = 'scope';
-      this.scopeStepIndex = this.scopeQuestions.length - 1;
+      this.clearAutoAdvance();
+      this.screen = 'intro';
     },
 
     // ================= domain questions =================
     selectAnswer(letter) {
       this.answers[this.currentQuestion.qid] = letter;
+      this.scheduleAutoAdvance(() => this.questionNext());
     },
     questionNext() {
+      this.clearAutoAdvance();
       if (!this.answers[this.currentQuestion.qid]) return;
       if (this.questionCursor < this.totalQuestions - 1) {
         this.questionCursor += 1;
+        if (this.questionCursor > this.furthestCursor) this.furthestCursor = this.questionCursor;
       } else {
-        this.screen = 'results';
+        this.furthestCursor = this.totalQuestions - 1;
+        this.enterResults();
       }
     },
     questionBack() {
+      this.clearAutoAdvance();
       if (this.questionCursor > 0) {
         this.questionCursor -= 1;
       } else {
@@ -214,9 +260,8 @@ function wizardApp() {
       const r = this.finalResult;
       if (!r) return '';
       const who = this.context.roleTitle || 'this role';
-      const manager = this.context.managerName ? ` (assessed by ${this.context.managerName})` : '';
       const sentences = [];
-      sentences.push(`This classification wizard recommends ${r.grade} for the ${who} role${manager}.`);
+      sentences.push(`This classification wizard recommends ${r.grade} for the ${who} role.`);
       if (r.type === 'override') {
         sentences.push(`This is a mandatory named-position classification under clause ${r.clause} (${r.label}), and does not rely on the scored assessment.`);
       } else {
@@ -230,7 +275,7 @@ function wizardApp() {
           sentences.push('No grade-boundary or domain-mismatch flags were raised during the assessment.');
         }
       }
-      sentences.push(`Assessment recorded on ${this.context.date}${this.context.positionName ? ` for the position "${this.context.positionName}"` : ''}.`);
+      sentences.push(`Assessment recorded on ${this.context.date}.`);
       sentences.push('This is a classification recommendation, not a final determination — HR must confirm the final classification.');
       return sentences.join(' ');
     },
@@ -242,8 +287,6 @@ function wizardApp() {
       lines.push('Health and Allied Services, Managers and Administrative Workers (Victorian Public Sector) Enterprise Agreement 2025-2027, Schedule 3D Part 1');
       lines.push('');
       lines.push(`Role title: ${this.context.roleTitle || '—'}`);
-      if (this.context.positionName) lines.push(`Position/employee: ${this.context.positionName}`);
-      if (this.context.managerName) lines.push(`Assessed by: ${this.context.managerName}`);
       lines.push(`Date: ${this.context.date}`);
       lines.push('');
       lines.push(`RECOMMENDED GRADE: ${r.grade}`);
@@ -260,7 +303,7 @@ function wizardApp() {
         lines.push('');
         if (r.hrReviewRequired) {
           lines.push('HR REVIEW RECOMMENDED:');
-          if (r.boundaryFlag) lines.push(`  - Score is within 5 points of the Grade boundary; possible alternative grade: ${r.adjacentGrade}.`);
+          if (r.boundaryFlag) lines.push(`  - Score is close to a grade boundary; possible alternative grade: ${r.adjacentGrade}.`);
           r.mismatchFlags.forEach((f) => lines.push(`  - ${f.message}`));
         } else {
           lines.push('No boundary or mismatch flags were raised.');
@@ -298,12 +341,14 @@ function wizardApp() {
 
     // ================= reset =================
     resetWizard() {
+      this.clearAutoAdvance();
       this.screen = 'intro';
-      this.scopeStepIndex = 0;
       this.questionCursor = 0;
-      this.context = { roleTitle: '', positionName: '', managerName: '', date: todayISO() };
-      this.scopeAnswers = { scope_rwh_rch: null, scope_executive_policy: null };
-      this.outOfScope = null;
+      this.furthestCursor = 0;
+      this.resultsReached = false;
+      this.resultsUpdatedNotice = false;
+      this._lastResultsSnapshot = null;
+      this.context = { roleTitle: '', date: todayISO() };
       this.overrideKey = null;
       this.answers = {};
       this.introTouched = false;
@@ -312,16 +357,10 @@ function wizardApp() {
 
     // ================= keyboard navigation =================
     handleKeydown(e) {
-      if (this.screen === 'intro' || this.screen === 'outOfScope' || this.screen === 'results') return;
+      if (this.screen === 'intro' || this.screen === 'results') return;
       const tag = (e.target && e.target.tagName) || '';
       if (tag === 'INPUT' || tag === 'TEXTAREA') return;
 
-      if (this.screen === 'scope') {
-        if (e.key === '1') this.answerScope(true);
-        else if (e.key === '2') this.answerScope(false);
-        else if (e.key === 'Backspace' || e.key === 'ArrowLeft') this.scopeBack();
-        return;
-      }
       if (this.screen === 'override') {
         const idx = parseInt(e.key, 10);
         if (idx >= 1 && idx <= this.overrideQuestion.options.length) {

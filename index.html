@@ -43,19 +43,13 @@
         <button class="drawer-close" type="button" @click="sidebarOpen = false" aria-label="Close navigation">&times;</button>
       </div>
 
-      <p class="sidebar-subtitle">Schedule 3D Part 1 &middot; Grades 1A&ndash;11</p>
+      <p class="sidebar-subtitle">Managers and Administrative Workers &middot; Grades 1A&ndash;11</p>
 
       <ol class="step-list">
         <li>
           <button type="button" class="step" :class="stepStatus('intro')" @click="jumpTo('intro')" :disabled="!canJumpTo('intro')">
             <span class="step-dot" aria-hidden="true"></span>
             <span class="step-label">About this role</span>
-          </button>
-        </li>
-        <li>
-          <button type="button" class="step" :class="stepStatus('scope')" @click="jumpTo('scope')" :disabled="!canJumpTo('scope')">
-            <span class="step-dot" aria-hidden="true"></span>
-            <span class="step-label">Eligibility check</span>
           </button>
         </li>
         <li>
@@ -100,60 +94,18 @@
             <p class="field-error" x-show="introTouched && !context.roleTitle.trim()" x-cloak>Enter a role title to continue.</p>
           </div>
           <div class="field">
-            <label for="positionName">Position or employee name <span class="optional">(optional)</span></label>
-            <input id="positionName" type="text" x-model="context.positionName" autocomplete="off" />
-          </div>
-          <div class="field">
-            <label for="managerName">Your name <span class="optional">(optional)</span></label>
-            <input id="managerName" type="text" x-model="context.managerName" autocomplete="off" />
-          </div>
-          <div class="field">
             <label for="assessDate">Date</label>
             <input id="assessDate" type="date" x-model="context.date" />
           </div>
-          <button type="submit" class="btn btn-primary btn-large">Start eligibility check</button>
+          <button type="submit" class="btn btn-primary btn-large">Start named-position check</button>
         </form>
-      </section>
-
-      <!-- ---------- SCOPE ---------- -->
-      <section class="screen" x-show="screen === 'scope'" x-cloak>
-        <p class="eyebrow">Eligibility check</p>
-        <h1 x-text="currentScopeQuestion.text"></h1>
-        <p class="lede">This determines whether Schedule 3D Part 1 applies to this role.</p>
-
-        <div class="options" role="radiogroup" :aria-label="currentScopeQuestion.text">
-          <button type="button" class="option-btn" :class="{ selected: scopeAnswers[currentScopeQuestion.id] === true }" role="radio" :aria-checked="scopeAnswers[currentScopeQuestion.id] === true" @click="answerScope(true)">
-            <span class="option-key">1</span>
-            <span class="option-label">Yes</span>
-          </button>
-          <button type="button" class="option-btn" :class="{ selected: scopeAnswers[currentScopeQuestion.id] === false }" role="radio" :aria-checked="scopeAnswers[currentScopeQuestion.id] === false" @click="answerScope(false)">
-            <span class="option-key">2</span>
-            <span class="option-label">No</span>
-          </button>
-        </div>
-
-        <div class="nav-row">
-          <button type="button" class="btn btn-ghost" @click="scopeBack()">&larr; Back</button>
-          <span class="nav-hint">Question <span x-text="scopeStepIndex + 1"></span> of <span x-text="scopeQuestions.length"></span></span>
-        </div>
-      </section>
-
-      <!-- ---------- OUT OF SCOPE ---------- -->
-      <section class="screen" x-show="screen === 'outOfScope'" x-cloak>
-        <p class="eyebrow eyebrow--warning">Out of scope</p>
-        <h1>This wizard doesn't apply to this role</h1>
-        <div class="callout callout--info" x-show="outOfScope">
-          <p x-text="outOfScope && outOfScope.message"></p>
-          <p class="callout-clause" x-show="outOfScope && outOfScope.clause">Reference: clause <span x-text="outOfScope && outOfScope.clause"></span></p>
-        </div>
-        <button type="button" class="btn btn-primary" @click="resetWizard()">Start a new assessment</button>
       </section>
 
       <!-- ---------- NAMED OVERRIDE ---------- -->
       <section class="screen" x-show="screen === 'override'" x-cloak>
         <p class="eyebrow">Named position check</p>
         <h1 x-text="overrideQuestion.text"></h1>
-        <p class="lede">Some positions are assigned a mandatory grade by the Agreement, regardless of scored assessment. Check if this role matches one below.</p>
+        <p class="lede" x-text="overrideQuestion.subtitle"></p>
 
         <div class="options options--override" role="radiogroup" :aria-label="overrideQuestion.text">
           <template x-for="(opt, i) in overrideQuestion.options" :key="opt.letter">
@@ -179,12 +131,20 @@
       <section class="screen" x-show="screen === 'question'" x-cloak>
         <template x-if="currentQuestion">
           <div>
+            <div class="callout callout--review" x-show="inReviewMode" x-cloak>
+              <p>
+                You're reviewing an earlier question.
+                <button type="button" class="link-btn" @click="resumeProgress()">Continue to where you left off &rarr;</button>
+              </p>
+            </div>
+
             <p class="eyebrow">
               Domain <span x-text="currentDomainIndex + 1"></span> of 6:
               <span x-text="domainMeta[currentDomainId].name"></span>
               &middot; Question <span x-text="currentQuestion.indexInDomain + 1"></span> of <span x-text="currentQuestion.domainTotal"></span>
             </p>
             <h1 x-text="currentQuestion.text"></h1>
+            <p class="lede" x-show="currentQuestion.subtitle" x-text="currentQuestion.subtitle"></p>
 
             <div class="progress-track" aria-hidden="true">
               <div class="progress-fill" :style="`width: ${(answeredCount / totalQuestions) * 100}%`"></div>
@@ -217,24 +177,33 @@
       ">
         <template x-if="finalResult">
           <div>
+            <div class="callout callout--review" x-show="resultsUpdatedNotice" x-cloak>
+              <p>Your answers have changed since you last viewed this page — the recommendation below reflects your latest answers.</p>
+            </div>
+
             <p class="eyebrow">Recommendation</p>
             <div class="grade-banner">
               <span class="grade-banner-label">Recommended grade</span>
               <span class="grade-banner-value" x-text="finalResult.grade"></span>
             </div>
 
-            <!-- HR review banner -->
+            <!-- HR review banner (blocking: genuine toss-up or mismatch) -->
             <div class="callout callout--warning" x-show="finalResult.type === 'scored' && finalResult.hrReviewRequired" x-cloak>
               <h2>HR review recommended</h2>
               <ul>
                 <li x-show="finalResult.boundaryFlag">
-                  This score is close to a grade boundary — <strong x-text="finalResult.adjacentGrade"></strong> may also be appropriate. A person should confirm which grade best fits before finalising.
+                  This score is a close call between grades — <strong x-text="finalResult.adjacentGrade"></strong> may also be appropriate. Confirm which grade best fits before finalising.
                 </li>
                 <template x-for="flag in (finalResult.mismatchFlags || [])" :key="flag.id">
                   <li x-text="flag.message"></li>
                 </template>
               </ul>
             </div>
+
+            <!-- Advisory note (non-blocking: near a boundary, but not a genuine toss-up and no mismatch) -->
+            <p class="boundary-note" x-show="finalResult.type === 'scored' && finalResult.boundaryFlag && !finalResult.hrReviewRequired" x-cloak>
+              This score is also within range of <strong x-text="finalResult.adjacentGrade"></strong> — shown for reference; HR review is not required on this basis alone.
+            </p>
 
             <!-- Override reasoning -->
             <div class="reasoning-block" x-show="finalResult.type === 'override'">

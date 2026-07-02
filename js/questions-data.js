@@ -11,6 +11,12 @@
  * can never accidentally enter the KSE domain average, matching the
  * conflation-risk note in wizard-question-design.md and the confirmed
  * scoring decision that KSE domain score = average(KSE1, KSE2, KSE3).
+ *
+ * `text` is a short, plain-language question stem. `subtitle` gives the
+ * manager extra context to help them pick an answer. Neither field
+ * affects scoring — only `options[].points` does. Full clause-anchored
+ * wording lives in wizard-question-design.md as the source of truth;
+ * `text`/`subtitle` here are a deliberately simplified paraphrase of it.
  */
 
 const DOMAIN_META = {
@@ -28,7 +34,8 @@ const QUESTIONS = {
   KSE: [
     {
       qid: 'KSE1',
-      text: 'How much role-specific administrative, technical or health-service management experience is normally needed to perform the role effectively?',
+      text: 'How much experience does this role need?',
+      subtitle: "Think about administrative, technical or health-service management experience — not formal qualifications (that's the next question).",
       options: [
         { letter: 'A', points: 0,   label: 'Limited administrative experience.', clause: '2.1' },
         { letter: 'B', points: 25,  label: "More than 12 months' role or like-role clerical experience.", clause: '3.2(a)(i)' },
@@ -39,7 +46,8 @@ const QUESTIONS = {
     },
     {
       qid: 'KSE2',
-      text: 'What level of technical or professional knowledge does the role apply day to day?',
+      text: 'What level of technical knowledge does the role use day to day?',
+      subtitle: 'Consider the depth and breadth of specialist or professional knowledge applied in everyday work, not qualifications held.',
       options: [
         { letter: 'A', points: 0,   label: 'Basic hospital systems, procedures and factual transactions.', clause: '2.2(c), 2.2(e)' },
         { letter: 'B', points: 25,  label: 'Established clerical routines and methods.', clause: '3.2(a)(i)' },
@@ -51,6 +59,7 @@ const QUESTIONS = {
     {
       qid: 'KSE3',
       text: 'Does the role require formal qualifications or accreditation?',
+      subtitle: 'Include certificates, diplomas, degrees or professional accreditation the role formally requires — not qualifications the current person happens to hold.',
       options: [
         { letter: 'A', points: 0,   label: 'No explicit qualification; limited experience is sufficient.', clause: '2.1' },
         { letter: 'B', points: 25,  label: 'Technical training or experience exceeding 12 months.', clause: '3.2(a)(i)' },
@@ -63,7 +72,8 @@ const QUESTIONS = {
   PSJ: [
     {
       qid: 'PSJ1',
-      text: 'How predictable are the problems or decisions the role deals with?',
+      text: 'How predictable are the problems this role deals with?',
+      subtitle: 'Routine, rule-based problems score lower. Complex, one-off issues needing judgement score higher.',
       options: [
         { letter: 'A', points: 0,   label: 'Standard, factual and predictable transactions.', clause: '2.2(c)' },
         { letter: 'B', points: 25,  label: 'Established procedures with limited choices guided by precedent or rule.', clause: '3.2(b)' },
@@ -74,7 +84,8 @@ const QUESTIONS = {
     },
     {
       qid: 'PSJ2',
-      text: 'When choosing how to do the work, how much discretion does the role have?',
+      text: 'How much freedom does the role have in choosing how to do the work?',
+      subtitle: "This is about freedom to choose the method or approach — not just the outcome expected of the role.",
       options: [
         { letter: 'A', points: 0,   label: 'Discretion limited by existing procedures and protocols.', clause: '2.2(b)' },
         { letter: 'B', points: 25,  label: 'Most suitable action selected from a limited range.', clause: '3.2(b)' },
@@ -86,6 +97,7 @@ const QUESTIONS = {
     {
       qid: 'PSJ3',
       text: 'What kind of analysis does the role perform?',
+      subtitle: 'From basic fact-checking through to strategic analysis of trends and future plans.',
       options: [
         { letter: 'A', points: 0,   label: 'Basic analysis of a situation or information.', clause: '2.2(b)' },
         { letter: 'B', points: 25,  label: 'Analyses information and makes recommendations to peers or supervisors.', clause: '3.2(c)' },
@@ -96,7 +108,8 @@ const QUESTIONS = {
     },
     {
       qid: 'PSJ4',
-      text: 'Does the role change existing methods, systems or service models?',
+      text: 'Does the role change existing methods or systems?',
+      subtitle: 'Consider whether the role just follows procedures, or actively redesigns how things are done.',
       options: [
         { letter: 'A', points: 0,   label: 'No — follows standard procedures.', clause: '2.2(c)' },
         { letter: 'B', points: 25,  label: 'Chooses between accepted methods.', clause: '3.2(b)' },
@@ -110,6 +123,7 @@ const QUESTIONS = {
     {
       qid: 'AA1',
       text: "How closely is the role's work monitored?",
+      subtitle: 'Closely monitored roles have frequent check-ins or reporting. Highly autonomous roles operate under broad policy only.',
       options: [
         { letter: 'A', points: 0,   label: 'Outcomes monitored by a supervisor, or audited by a system.', clause: '2.2(b)' },
         { letter: 'B', points: 25,  label: 'Progress closely monitored with frequent reporting or instructions.', clause: '3.2(c)' },
@@ -120,7 +134,8 @@ const QUESTIONS = {
     },
     {
       qid: 'AA2',
-      text: 'What decisions can the role make independently?',
+      text: 'What decisions can the role make on its own?',
+      subtitle: 'Think about independent decision-making authority — not who ultimately signs off or is accountable.',
       options: [
         { letter: 'A', points: 0,   label: 'Works within existing procedures and protocols.', clause: '2.2(b)' },
         { letter: 'B', points: 25,  label: 'Selects from a limited range of established options.', clause: '3.2(b)' },
@@ -132,6 +147,7 @@ const QUESTIONS = {
     {
       qid: 'AA3',
       text: 'What is the role held accountable for?',
+      subtitle: 'Consider what the role would be answerable for if something went wrong.',
       options: [
         { letter: 'A', points: 0,   label: 'Accurate routine transactions.', clause: '2.2(c)' },
         { letter: 'B', points: 25,  label: 'Defined activity standards, targets or budgets.', clause: '3.2(c)' },
@@ -142,7 +158,8 @@ const QUESTIONS = {
     },
     {
       qid: 'AA4',
-      text: 'Can the role commit resources or expenditure?',
+      text: 'Can the role commit resources or spend money?',
+      subtitle: 'Include authority to approve budgets, allocate resources, or commit the organisation to expenditure.',
       options: [
         { letter: 'A', points: 0,   label: 'No explicit resource authority.', clause: null },
         { letter: 'B', points: 25,  label: 'May process invoices, orders or payments, but does not control resources.', clause: '3.3(e)' },
@@ -156,6 +173,7 @@ const QUESTIONS = {
     {
       qid: 'LTM1',
       text: 'Does the role supervise or manage other staff?',
+      subtitle: 'Include team size and level, from no supervision through to directing subordinate managers.',
       options: [
         { letter: 'A', points: 0,   label: 'No supervision; may work cooperatively in mixed teams.', clause: '2.2(c)' },
         { letter: 'B', points: 25,  label: 'Trains new employees in basic functions.', clause: '3.3(d)' },
@@ -166,7 +184,8 @@ const QUESTIONS = {
     },
     {
       qid: 'LTM2',
-      text: 'What people-management activities does the role perform?',
+      text: 'What people-management tasks does the role do?',
+      subtitle: 'Think rostering, training, recruitment, performance management and workforce planning.',
       options: [
         { letter: 'A', points: 0,   label: 'None beyond basic cooperation.', clause: null },
         { letter: 'B', points: 25,  label: 'Induction or basic training.', clause: '2.2(d), 3.3(d)' },
@@ -177,7 +196,8 @@ const QUESTIONS = {
     },
     {
       qid: 'LTM3',
-      text: 'How large or complex is the group being led?',
+      text: 'How large or complex is the team being led?',
+      subtitle: 'Consider team size and complexity relative to the size of the health service, not just headcount.',
       options: [
         { letter: 'A', points: 0,   label: 'No team leadership.', clause: null },
         { letter: 'B', points: 25,  label: 'A small work group.', clause: '4.1(a)' },
@@ -188,7 +208,8 @@ const QUESTIONS = {
     },
     {
       qid: 'LTM4',
-      text: 'Is leadership mainly technical, operational or executive in nature?',
+      text: 'Is the leadership mainly technical, operational or executive?',
+      subtitle: 'Technical leadership guides a specific activity. Executive leadership spans whole health-service operations.',
       options: [
         { letter: 'A', points: 0,   label: 'No leadership responsibility.', clause: null },
         { letter: 'B', points: 25,  label: 'Technical or admin leadership within one or two activities.', clause: '4.2(a)' },
@@ -201,7 +222,8 @@ const QUESTIONS = {
   CII: [
     {
       qid: 'CII1',
-      text: 'Who does the role regularly communicate with?',
+      text: 'Who does the role regularly talk to?',
+      subtitle: 'Think about the most senior or complex audience the role deals with regularly, not just day-to-day contacts.',
       options: [
         { letter: 'A', points: 0,   label: 'Members of the public and the immediate team, on factual matters.', clause: '2.2(e)' },
         { letter: 'B', points: 25,  label: 'External organisations, on routine accounts or claims.', clause: '3.3(h)' },
@@ -212,7 +234,8 @@ const QUESTIONS = {
     },
     {
       qid: 'CII2',
-      text: 'What level of persuasion or negotiation is required?',
+      text: 'How much persuasion or negotiation is needed?',
+      subtitle: 'From simply passing on information, through to negotiating with Boards or government.',
       options: [
         { letter: 'A', points: 0,   label: 'Clearly and accurately communicates information.', clause: '2.2(b)' },
         { letter: 'B', points: 25,  label: 'Obtains cooperation to comply with technical or admin arrangements.', clause: '3.2(a)(iii)' },
@@ -224,6 +247,7 @@ const QUESTIONS = {
     {
       qid: 'CII3',
       text: 'Does the role represent the health service externally?',
+      subtitle: 'Include speaking on behalf of the organisation to outside bodies, the media, or the public.',
       options: [
         { letter: 'A', points: 0,   label: 'No external representation.', clause: null },
         { letter: 'B', points: 25,  label: 'Routine contact with external organisations.', clause: '3.3(h)' },
@@ -234,7 +258,8 @@ const QUESTIONS = {
     },
     {
       qid: 'CII4',
-      text: 'How sensitive or contested are the matters communicated?',
+      text: 'How sensitive are the matters this role communicates?',
+      subtitle: 'Consider the stakes if these conversations go wrong — routine information versus high-stakes negotiations.',
       options: [
         { letter: 'A', points: 0,   label: 'Standard factual information.', clause: null },
         { letter: 'B', points: 25,  label: 'Routine technical or admin information.', clause: null },
@@ -248,6 +273,7 @@ const QUESTIONS = {
     {
       qid: 'OIS1',
       text: 'What part of the organisation does the role affect?',
+      subtitle: 'From a single task through to the whole health service.',
       options: [
         { letter: 'A', points: 0,   label: 'Individual tasks or work-area outcomes.', clause: '2.2(c)' },
         { letter: 'B', points: 25,  label: 'A defined activity or specified function.', clause: '3.1, 4.3(a)' },
@@ -258,7 +284,8 @@ const QUESTIONS = {
     },
     {
       qid: 'OIS2',
-      text: 'Does the role affect budgets, resources or service standards?',
+      text: 'Does the role affect budgets or resources?',
+      subtitle: 'Include monitoring, controlling, or negotiating budgets, funding or resource allocation.',
       options: [
         { letter: 'A', points: 0,   label: 'No budget or resource responsibility.', clause: null },
         { letter: 'B', points: 25,  label: 'Monitors billings, invoices, orders or accounts.', clause: '3.3(b), 3.3(e)' },
@@ -269,7 +296,8 @@ const QUESTIONS = {
     },
     {
       qid: 'OIS3',
-      text: "What is the role's planning horizon?",
+      text: 'How far ahead does the role plan?',
+      subtitle: 'From day-to-day tasks through to long-term strategic and capital planning.',
       options: [
         { letter: 'A', points: 0,   label: 'Daily transactions and tasks.', clause: null },
         { letter: 'B', points: 25,  label: 'Work progress, routine reports or meeting coordination.', clause: '3.3(a), 3.3(i)' },
@@ -281,6 +309,7 @@ const QUESTIONS = {
     {
       qid: 'OIS4',
       text: 'How broad is the service or function being managed?',
+      subtitle: 'From a single task, through to the full range of services across a large health service.',
       options: [
         { letter: 'A', points: 0,   label: 'A single task or transaction stream.', clause: null },
         { letter: 'B', points: 25,  label: 'One defined administrative activity.', clause: null },
@@ -296,6 +325,11 @@ const QUESTIONS = {
  * KSE4 — named-position override question.
  * Kept separate from QUESTIONS.KSE (see file header).
  *
+ * Simplified per user request: this now just asks whether the role
+ * matches any of the listed named positions, instead of asking the
+ * manager to interpret "named position... assigns to a specific grade"
+ * legal phrasing up front.
+ *
  * Note: wizard-question-design.md compresses two distinct named
  * positions (NAATI two-or-more-language interpreter/translator, and
  * management of Dental Maintenance Technicians) into a single lettered
@@ -308,9 +342,10 @@ const QUESTIONS = {
  */
 const KSE4_OVERRIDE_QUESTION = {
   qid: 'KSE4',
-  text: 'Is this role a named position that the Agreement assigns to a specific grade?',
+  text: 'Does this role match any of the positions below?',
+  subtitle: "These are the only roles the Agreement locks to a fixed grade regardless of duties. If none apply, select \"No\" and continue to the assessment questions.",
   options: [
-    { letter: 'A', key: 'none', label: 'No — this is not a named override position.', grade: null, clause: null },
+    { letter: 'A', key: 'none', label: 'No — none of these match this role.', grade: null, clause: null },
     { letter: 'B', key: 'interpreter_unqualified', label: 'Interpreter, unqualified', grade: 'Grade 1', clause: '3.4(a)' },
     { letter: 'C', key: 'naati_one_language', label: 'NAATI-accredited interpreter/translator, capable of interpreting into one other language', grade: 'Grade 2', clause: '4.4(a)' },
     { letter: 'D', key: 'workplace_trainer_careers_advisor', label: 'Workplace Trainer / Careers Advisor', grade: 'Grade 3', clause: '5.4(a)' },
@@ -319,21 +354,7 @@ const KSE4_OVERRIDE_QUESTION = {
   ],
 };
 
-/** Scope-exclusion questions — scoring-and-recommendation-logic.md, clauses 1.2 and 1.3. */
-const SCOPE_QUESTIONS = [
-  {
-    id: 'scope_rwh_rch',
-    text: "Is this role employed by the Royal Women's Hospital or the Royal Children's Hospital?",
-    clause: '1.2',
-  },
-  {
-    id: 'scope_executive_policy',
-    text: 'Is this role covered by the Health Executive Employment and Remuneration Policy, however titled or styled?',
-    clause: '1.3',
-  },
-];
-
 // Dual export for browser (global) + Node (module.exports), used by scoring.test.js.
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { QUESTIONS, KSE4_OVERRIDE_QUESTION, SCOPE_QUESTIONS, DOMAIN_META, DOMAIN_ORDER };
+  module.exports = { QUESTIONS, KSE4_OVERRIDE_QUESTION, DOMAIN_META, DOMAIN_ORDER };
 }
