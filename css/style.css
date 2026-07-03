@@ -1,17 +1,17 @@
 /* ===================== Design tokens ===================== */
 :root {
-  --color-brand: #3451b2;
-  --color-brand-soft: #eaedf9;
+  --color-brand: #d91b53;
+  --color-brand-soft: #fce7ee;
   --color-bg: #ffffff;
-  --color-bg-soft: #f6f6f7;
-  --color-text: #3c3c43;
-  --color-text-muted: #6e6e77;
-  --color-divider: #e2e2e3;
-  --color-warning-bg: #fdf3e7;
-  --color-warning-border: #e8a33d;
-  --color-warning-text: #7a4a06;
-  --color-info-bg: #eef1fb;
-  --color-info-border: #b9c3ea;
+  --color-bg-soft: #f4f6fa;
+  --color-text: #263142;
+  --color-text-muted: #657084;
+  --color-divider: #dce2eb;
+  --color-warning-bg: #fff2df;
+  --color-warning-border: #c97914;
+  --color-warning-text: #704000;
+  --color-info-bg: #eaf1fb;
+  --color-info-border: #b7c9e7;
   --font-family: 'Inter', system-ui, sans-serif;
 
   --radius-sm: 8px;
@@ -24,18 +24,18 @@
 }
 
 [data-theme='dark'] {
-  --color-brand: #a8b1ff;
-  --color-brand-soft: #262b45;
-  --color-bg: #1b1b1f;
-  --color-bg-soft: #202127;
-  --color-text: #dfdfd6;
-  --color-text-muted: #a4a4ad;
-  --color-divider: #2e2e32;
-  --color-warning-bg: #322616;
-  --color-warning-border: #a9781f;
-  --color-warning-text: #f0c778;
-  --color-info-bg: #1f243a;
-  --color-info-border: #3b477a;
+  --color-brand: #ff7aa2;
+  --color-brand-soft: #3b1725;
+  --color-bg: #121722;
+  --color-bg-soft: #1a2230;
+  --color-text: #e7ebf2;
+  --color-text-muted: #a6afbd;
+  --color-divider: #2c3647;
+  --color-warning-bg: #342414;
+  --color-warning-border: #d2953e;
+  --color-warning-text: #f0c070;
+  --color-info-bg: #1c2b44;
+  --color-info-border: #48658d;
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
   --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.35);
 }
@@ -147,6 +147,52 @@ button { font-family: inherit; }
 .step-count { font-size: 0.72rem; color: var(--color-text-muted); font-variant-numeric: tabular-nums; }
 .step--results { border-top: 1px solid var(--color-divider); margin-top: 6px; padding-top: 11px; }
 
+/* ---- expandable per-question sidebar nav ---- */
+.step-group { display: flex; align-items: stretch; gap: 2px; }
+.step-group .step--domain { flex: 1; min-width: 0; }
+.step-expand-btn {
+  flex-shrink: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 32px; min-height: 40px;
+  background: none; border: none; cursor: pointer;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+}
+.step-expand-btn:hover { background: var(--color-brand-soft); color: var(--color-text); }
+.step-expand-icon { transition: transform 0.15s ease; }
+.step-expand-icon--open { transform: rotate(180deg); }
+
+.substep-list {
+  list-style: none;
+  margin: 2px 0 4px;
+  padding: 0 0 0 26px;
+  display: flex; flex-direction: column; gap: 1px;
+  border-left: 2px solid var(--color-divider);
+  margin-left: 12px;
+}
+.substep {
+  width: 100%;
+  display: flex; align-items: flex-start; gap: 8px;
+  background: none; border: none; cursor: pointer;
+  padding: 7px 8px; border-radius: var(--radius-sm);
+  text-align: left; color: var(--color-text-muted);
+  font-size: 0.78rem; line-height: 1.3;
+  min-height: 36px;
+}
+.substep:not(:disabled):hover { background: var(--color-brand-soft); }
+.substep:disabled { cursor: not-allowed; opacity: 0.45; }
+.substep-dot {
+  width: 6px; height: 6px; border-radius: 999px; flex-shrink: 0;
+  margin-top: 4px;
+  background: var(--color-divider);
+  border: 2px solid var(--color-divider);
+}
+.substep.current { color: var(--color-text); font-weight: 700; background: var(--color-brand-soft); }
+.substep.current .substep-dot { background: var(--color-brand); border-color: var(--color-brand); }
+.substep.done .substep-dot { background: var(--color-brand); border-color: var(--color-brand); }
+.substep.done { color: var(--color-text); }
+.substep-label { flex: 1; }
+
 .sidebar-footnote {
   font-size: 0.72rem;
   color: var(--color-text-muted);
@@ -235,6 +281,107 @@ h1 {
 .option-label { display: flex; flex-direction: column; gap: 3px; }
 .option-meta { font-size: 0.78rem; color: var(--color-text-muted); font-weight: 600; }
 
+/* Wraps an option-btn with its optional hover-tooltip info icon.
+   Only KSE1, PSJ1, OIS1, OIS4 options render a visible icon
+   (x-show="opt.detail" hides it everywhere else). The icon sits over the
+   option-btn's top-right corner; the tooltip bubble is positioned relative
+   to option-wrap so it never gets clipped by the button's own overflow. */
+.option-wrap {
+  position: relative;
+}
+.option-detail-toggle {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  width: 24px;
+  height: 24px;
+  min-height: 0;
+  padding: 0;
+  margin: 0;
+  border: 1.5px solid var(--color-divider);
+  border-radius: 50%;
+  background: var(--color-bg);
+  color: var(--color-text-muted);
+  font-size: 0;
+  cursor: help;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2;
+  transition: border-color 120ms ease, color 120ms ease, background 120ms ease;
+}
+.option-detail-toggle::before {
+  content: 'i';
+  font-family: Georgia, 'Times New Roman', serif;
+  font-style: italic;
+  font-weight: 700;
+  font-size: 0.78rem;
+}
+.option-detail-toggle:hover,
+.option-detail-toggle:focus-visible,
+.option-detail-toggle[aria-expanded='true'] {
+  border-color: var(--color-brand);
+  color: var(--color-brand);
+  background: var(--color-brand-soft);
+}
+.option-detail-toggle:focus-visible {
+  outline: 2px solid var(--color-brand);
+  outline-offset: 2px;
+}
+/* Tooltip bubble — shown on hover OR focus (via Alpine mouseenter/focus
+   handlers setting expandedDetail) AND pinned open on click/tap for touch
+   devices that have no hover state. */
+.option-detail {
+  position: absolute;
+  top: 36px;
+  right: 6px;
+  width: min(260px, 74vw);
+  margin: 0;
+  padding: 10px 12px;
+  background: var(--color-text);
+  color: var(--color-bg);
+  border-radius: 8px;
+  font-size: 0.84rem;
+  line-height: 1.42;
+  box-shadow: var(--shadow-md);
+  z-index: 30;
+  text-align: left;
+  pointer-events: none; /* bubble itself never intercepts hover/click */
+}
+.option-detail::after {
+  content: '';
+  position: absolute;
+  top: -5px;
+  right: 16px;
+  width: 10px;
+  height: 10px;
+  background: var(--color-text);
+  transform: rotate(45deg);
+}
+
+/* ===================== Typeform-style question transitions ===================== */
+/* Applied to the single "current question" node, which is re-created (not
+   just re-rendered) via a keyed x-for of one item — see index.html. Because
+   the node is freshly inserted on every question change, the animation
+   below runs automatically each time. We only animate the *entrance* of the
+   new question (no exit animation on the outgoing node, since it's removed
+   from the DOM synchronously); this is a deliberate simplification versus a
+   full enter/leave choreography, in exchange for much simpler, more robust
+   state handling. */
+@keyframes qwiz-slide-in-up {
+  from { opacity: 0; transform: translateY(28px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes qwiz-slide-in-down {
+  from { opacity: 0; transform: translateY(-28px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.qwiz-anim-next { animation: qwiz-slide-in-up 320ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+.qwiz-anim-back { animation: qwiz-slide-in-down 320ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+@media (prefers-reduced-motion: reduce) {
+  .qwiz-anim-next, .qwiz-anim-back { animation: none; }
+}
+
 .progress-track {
   height: 4px; border-radius: 999px; background: var(--color-divider);
   margin-bottom: 24px; overflow: hidden;
@@ -263,6 +410,45 @@ h1 {
 .btn-ghost { background: transparent; color: var(--color-text-muted); border-color: transparent; padding-left: 8px; padding-right: 8px; }
 .btn-ghost:hover { color: var(--color-text); }
 .btn-large { width: 100%; margin-top: 6px; }
+
+/* ===================== FAB up/down nav (Typeform-style) ===================== */
+/* Replaces the inline Back/Next buttons on the override and question
+   screens. A single fixed instance lives outside the per-screen sections
+   in the markup and is shown/hidden by screen via x-show. */
+.fab-nav {
+  position: fixed;
+  right: 24px;
+  bottom: 28px;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: var(--shadow-md);
+}
+.fab-btn {
+  width: 48px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: var(--color-brand);
+  color: var(--color-bg);
+  cursor: pointer;
+  transition: opacity 120ms ease, background 120ms ease;
+}
+.fab-btn:not(:disabled):hover { opacity: 0.88; }
+.fab-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.fab-btn:focus-visible { outline: 2px solid var(--color-text); outline-offset: -4px; }
+.fab-btn--up { border-bottom: 1px solid rgba(0, 0, 0, 0.12); }
+[data-theme='dark'] .fab-btn--up { border-bottom-color: rgba(0, 0, 0, 0.3); }
+
+/* Keep page content clear of the fixed FAB on the two screens that use it. */
+body[data-screen='override'] .main-panel,
+body[data-screen='question'] .main-panel {
+  padding-bottom: 96px;
+}
 
 /* ===================== Callouts ===================== */
 .callout {
@@ -305,6 +491,87 @@ h1 {
 .grade-banner-label { font-size: 0.82rem; font-weight: 600; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
 .grade-banner-value { font-size: clamp(1.8rem, 1.4rem + 2vw, 2.6rem); font-weight: 800; color: var(--color-brand); letter-spacing: -0.02em; }
 
+/* ---------- Grade range gauge (timeline style) ---------- */
+.gauge-block { margin: 18px 0 28px; }
+.gauge-timeline {
+  position: relative;
+  /* label row + line + marker row, with room for the marker to sit clear below the line */
+  padding: 26px 0 54px;
+  margin-bottom: 10px;
+}
+
+/* Grade labels, above the line */
+.gauge-labels {
+  position: relative;
+  height: 20px;
+  margin-bottom: 8px;
+}
+.gauge-label {
+  position: absolute; top: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.66rem; font-weight: 700; color: var(--color-text-muted);
+  letter-spacing: 0.01em;
+  overflow: hidden; white-space: nowrap; padding: 0 1px;
+}
+.gauge-label--current { color: var(--color-brand); font-weight: 800; }
+
+@media (max-width: 480px) {
+  .gauge-label { font-size: 0.58rem; }
+}
+
+/* The single horizontal timeline, with a vertical tick per grade boundary */
+.gauge-line {
+  position: relative;
+  height: 2px;
+  background: #f6f6f7;
+  border-radius: 1px;
+}
+[data-theme='dark'] .gauge-line { background: var(--color-bg-soft); }
+.gauge-tick {
+  position: absolute; top: -6px;
+  width: 1px; height: 14px;
+  background: var(--color-divider);
+  transform: translateX(-50%);
+}
+.gauge-tick--end { transform: translateX(-100%); }
+
+/* Score marker, below the line: upward-pointing triangle + value */
+.gauge-marker {
+  position: absolute; top: calc(100% - 54px);
+  transform: translateX(-50%);
+  display: flex; flex-direction: column; align-items: center;
+  gap: 4px;
+}
+.gauge-marker-triangle {
+  width: 0; height: 0;
+  border-left: 7px solid transparent;
+  border-right: 7px solid transparent;
+  border-bottom: 10px solid var(--color-brand); /* points upward, tip touching the line */
+}
+.gauge-marker-value {
+  font-size: 0.82rem; font-weight: 700; color: var(--color-brand);
+  white-space: nowrap;
+}
+
+.gauge-text { font-size: 0.92rem; margin-bottom: 6px; }
+.gauge-table-details { font-size: 0.85rem; }
+.gauge-table-details summary { cursor: pointer; color: var(--color-brand); font-weight: 600; margin-bottom: 8px; }
+.gauge-table-row--current td { font-weight: 700; color: var(--color-brand); }
+
+/* ---------- Weighted contribution breakdown ---------- */
+.contribution-block { margin: 28px 0; }
+.contribution-table td { vertical-align: middle; }
+.contribution-bar-track {
+  height: 6px; border-radius: 3px;
+  background: var(--color-divider);
+  margin-top: 6px; max-width: 220px;
+  overflow: hidden;
+}
+.contribution-bar-fill {
+  height: 100%; background: var(--color-brand);
+  border-radius: 3px;
+}
+
 .chart-block { margin: 28px 0; }
 .chart-block h2, .reasoning-block h2, .summary-block h2 { font-size: 1.1rem; font-weight: 700; margin-bottom: 14px; }
 .chart-wrap { max-width: 380px; margin: 0 auto 18px; }
@@ -339,6 +606,12 @@ h1 {
   border-radius: var(--radius-md); padding: 16px 18px;
   font-size: 0.92rem; line-height: 1.6; margin-bottom: 14px;
 }
+.summary-prose strong { color: var(--color-text); font-weight: 700; }
+.summary-prose a { color: var(--color-brand); font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
+.summary-prose a:hover, .summary-prose a:focus-visible { text-decoration-thickness: 2px; }
+.summary-prose .summary-agreement { color: var(--color-text-muted); font-size: 0.85rem; }
+.summary-prose .summary-domain-list { margin: 6px 0 0; padding-left: 20px; }
+.summary-prose .summary-domain-list li { margin-bottom: 2px; }
 .summary-actions { display: flex; flex-wrap: wrap; gap: 10px; }
 
 .disclaimer {
@@ -346,6 +619,12 @@ h1 {
   border-top: 1px solid var(--color-divider);
   padding-top: 16px; margin: 24px 0 20px;
 }
+.btn-inline-link {
+  display: block; margin-top: 8px; padding: 0; min-height: auto;
+  background: none; border: none; color: var(--color-brand);
+  font-size: 0.85rem; text-decoration: underline; cursor: pointer;
+}
+.btn-inline-link:hover { opacity: 0.8; }
 
 /* ===================== Mobile ===================== */
 @media (max-width: 768px) {
@@ -379,16 +658,71 @@ h1 {
   }
   .main-panel { padding: 28px 18px 48px; }
   .nav-row { flex-wrap: wrap; }
+  .step-expand-btn { width: 44px; min-height: 44px; }
+  .substep { min-height: 44px; padding: 9px 8px; }
+  .fab-nav { right: 16px; bottom: 18px; }
+  body[data-screen='override'] .main-panel,
+  body[data-screen='question'] .main-panel {
+    padding-bottom: 88px;
+  }
 }
+
+/* ===================== Methodology page ===================== */
+.screen--methodology { max-width: 760px; }
+.methodology-content h2 {
+  font-size: 1.15rem; font-weight: 700; margin: 30px 0 10px;
+}
+.methodology-content h2:first-child { margin-top: 0; }
+.methodology-content p, .methodology-content li {
+  font-size: 0.95rem; line-height: 1.6; color: var(--color-text);
+}
+.methodology-content p { margin-bottom: 12px; }
+.methodology-content ul, .methodology-content ol { margin: 0 0 14px; padding-left: 20px; }
+.methodology-content li { margin-bottom: 6px; }
+.methodology-content strong { font-weight: 700; }
+.methodology-content table {
+  width: 100%; border-collapse: collapse; font-size: 0.86rem; margin: 6px 0 18px;
+}
+.methodology-content th, .methodology-content td {
+  text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--color-divider);
+}
+.methodology-content th {
+  color: var(--color-text-muted); font-weight: 600; font-size: 0.76rem;
+  text-transform: uppercase; letter-spacing: 0.03em;
+}
+.methodology-content td:last-child, .methodology-content th:last-child { text-align: left; }
+.methodology-tldr { padding: 20px 0; } /* unused now content is live-rendered; kept for backward compat */
+.methodology-content > h2:first-child {
+  font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
+  color: var(--color-text-muted); margin-top: 0; margin-bottom: 8px;
+}
+.methodology-content > h2:first-child + p {
+  background: var(--color-bg-soft); border: 1px solid var(--color-divider);
+  border-radius: var(--radius-sm); padding: 14px 16px; margin-bottom: 12px;
+}
+.methodology-loading { padding: 20px 0; }
+.methodology-content hr {
+  border: none; border-top: 1px solid var(--color-divider); margin: 24px 0;
+}
+.step--static {
+  margin-top: 10px; color: var(--color-text-muted); font-size: 0.86rem;
+  display: flex; align-items: center; gap: 8px; background: none; border: none;
+  cursor: pointer; padding: 8px 4px; min-height: 44px; width: 100%; text-align: left;
+}
+.step--static:hover { color: var(--color-text); }
+.step--static.current { color: var(--color-brand); font-weight: 600; }
 
 /* ===================== Print ===================== */
 @media print {
-  .sidebar, .topbar, .btn, .nav-row, .btn-ghost { display: none !important; }
+  .sidebar, .topbar, .btn, .nav-row, .btn-ghost, .fab-nav { display: none !important; }
   .app-shell { display: block; }
   .main-panel { padding: 0; }
   body { background: #fff; color: #000; }
   .grade-banner { background: none; border: 2px solid #000; }
   .callout--warning { border: 2px solid #000; background: none; color: #000; }
+  .gauge-track { border: 1px solid #000; }
+  .gauge-segment--current { border-left: 2px solid #000; border-right: 2px solid #000; background: none; }
+  .gauge-marker-dot { background: #000; box-shadow: none; }
   a[href]::after { content: none !important; }
 }
 .btn-print-only { display: inline-flex; }

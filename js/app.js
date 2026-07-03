@@ -5,6 +5,11 @@
  *   intro -> override -> [results, terminal via named override]
  *                      -> question (x23, grouped by domain) -> results
  *
+ * 'methodology' is a standalone informational screen reachable from the
+ * sidebar at any point (not part of the linear wizard sequence). Entering
+ * it snapshots the screen the user came from in `preMethodologyScreen` so
+ * the back control returns them to exactly where they were.
+ *
  * All scoring math lives in scoring.js; this file only orchestrates the
  * wizard flow and reads/writes Alpine state.
  */
@@ -15,7 +20,18 @@ function wizardApp() {
     theme: 'light',
 
     // ---------- navigation ----------
-    screen: 'intro', // intro | override | question | results
+    screen: 'intro', // intro | override | question | results | methodology
+    // Screen to return to when leaving 'methodology' via its back control.
+    // Set on entry to 'methodology', read/cleared on exit. Defaults to
+    // 'intro' as a safe fallback (e.g. deep entry with no prior screen).
+    preMethodologyScreen: 'intro',
+    // Methodology content is fetched from docs/methodology.md at runtime
+    // and rendered with marked, rather than baked into the HTML — so the
+    // page always reflects the current .md file with no rebuild step.
+    // 'idle' | 'loading' | 'ready' | 'error'
+    methodologyStatus: 'idle',
+    methodologyHtml: '',
+    methodologyError: '',
     questionCursor: 0,
     // Furthest point the user has reached in the linear flow. Used so that
     // jumping back via the sidebar to review/change an earlier answer never
@@ -25,6 +41,30 @@ function wizardApp() {
     resultsUpdatedNotice: false,
     _lastResultsSnapshot: null,
     sidebarOpen: false,
+    // Letter of the option whose hover-tooltip detail bubble is showing/
+    // pinned on the current question, or null if none. Set on hover/focus,
+    // toggled on click (for touch devices with no hover state). Reset
+    // whenever the question changes (see questionNext/questionBack/
+    // jumpToQuestion/resetWizard).
+    expandedDetail: null,
+    // 'next' or 'back' — which way the last navigation moved, so the
+    // question/override screens know whether to slide the incoming
+    // question up (forward) or down (backward). See qwiz-anim-next/back
+    // in style.css and the keyed x-for wrapper in index.html.
+    navDirection: 'next',
+    // Increments on every navigation. The keyed x-for in index.html keys
+    // on this (not on navDirection alone), so the wrapper node is always
+    // destroyed/recreated — and the entrance animation always replays —
+    // even when two consecutive moves happen to share the same direction.
+    navTick: 0,
+    setNavDirection(dir) {
+      this.navDirection = dir;
+      this.navTick += 1;
+    },
+    // Explicit user expand/collapse choices per domain, keyed by domain id.
+    // A domain not present here falls back to "expanded if it's the current
+    // domain" — see isDomainExpanded().
+    expandedDomains: {},
     _advanceTimer: null,
 
     // ---------- data captured ----------
@@ -134,7 +174,51 @@ function wizardApp() {
     domainAnsweredCount(domainId) {
       return QUESTIONS[domainId].filter((q) => this.answers[q.qid]).length;
     },
+    domainQuestions(domainId) {
+      return this.flatQuestions.filter((q) => q.domain === domainId);
+    },
+    // A domain is expanded if the user has explicitly toggled it, or — by
+    // default, with no explicit choice yet — if it's the domain currently
+    // being answered. This keeps the sidebar tidy on load while still
+    // surfacing exactly where the user is.
+    isDomainExpanded(domainId) {
+      if (Object.prototype.hasOwnProperty.call(this.expandedDomains, domainId)) {
+        return this.expandedDomains[domainId];
+      }
+      return domainId === this.currentDomainId;
+    },
+    toggleDomainExpand(domainId) {
+      this.expandedDomains[domainId] = !this.isDomainExpanded(domainId);
+    },
+    // A specific question is reachable once the user's furthest progress has
+    // passed it — same rule the domain-level jump already relies on — so
+    // this never opens up questions the user hasn't gotten to yet.
+    canJumpToQuestion(qid) {
+      if (this.overrideKey !== 'none') return false;
+      const idx = this.flatQuestions.findIndex((q) => q.qid === qid);
+      if (idx < 0) return false;
+      return idx <= this.furthestCursor;
+    },
+    substepStatus(q) {
+      if (this.screen === 'question' && this.currentQuestion && this.currentQuestion.qid === q.qid) return 'current';
+      if (this.answers[q.qid]) return 'done';
+      return 'upcoming';
+    },
+    jumpToQuestion(qid) {
+      if (!this.canJumpToQuestion(qid)) return;
+      const idx = this.flatQuestions.findIndex((q) => q.qid === qid);
+      if (idx < 0) return;
+      this.clearAutoAdvance();
+      this.sidebarOpen = false;
+      this.expandedDetail = null;
+      this.setNavDirection(idx >= this.questionCursor ? 'next' : 'back');
+      this.questionCursor = idx;
+      this.screen = 'question';
+    },
     canJumpTo(stepId) {
+      // 'methodology' is a standalone reference screen, not a wizard step —
+      // always reachable regardless of progress.
+      if (stepId === 'methodology') return true;
       if (this.overrideResult) return stepId === 'intro' || stepId === 'override' || stepId === 'results';
       const status = this.stepStatus(stepId);
       return status === 'done' || status === 'current';
@@ -143,6 +227,14 @@ function wizardApp() {
       if (!this.canJumpTo(stepId)) return;
       this.clearAutoAdvance();
       this.sidebarOpen = false;
+      if (stepId === 'methodology') {
+        // Don't overwrite the return point if already on methodology (e.g.
+        // sidebar clicked twice) or coming from methodology itself.
+        if (this.screen !== 'methodology') this.preMethodologyScreen = this.screen;
+        this.screen = 'methodology';
+        this.loadMethodology();
+        return;
+      }
       if (stepId === 'intro') { this.screen = 'intro'; return; }
       if (stepId === 'override') { this.screen = 'override'; return; }
       if (stepId === 'results') { if (this.finalResult) this.enterResults(); return; }
@@ -150,8 +242,42 @@ function wizardApp() {
         const idx = this.flatQuestions.findIndex((q) => q.domain === stepId);
         // Jumping via the sidebar only changes *where you're looking* — it never
         // resets furthestCursor, so "Continue where you left off" always works.
-        if (idx >= 0) { this.questionCursor = idx; this.screen = 'question'; }
+        if (idx >= 0) {
+          this.setNavDirection(idx >= this.questionCursor ? 'next' : 'back');
+          this.questionCursor = idx;
+          this.screen = 'question';
+        }
       }
+    },
+
+    // ================= methodology (standalone reference screen) =================
+    // Fetches docs/methodology.md relative to index.html and renders it with
+    // marked. Cached after first successful load (force=true bypasses the
+    // cache, used by the "Try again" button after a failed fetch).
+    async loadMethodology(force = false) {
+      if (this.methodologyStatus === 'ready' && !force) return;
+      if (this.methodologyStatus === 'loading') return;
+      this.methodologyStatus = 'loading';
+      this.methodologyError = '';
+      try {
+        const res = await fetch('docs/methodology.md', { cache: 'no-cache' });
+        if (!res.ok) throw new Error(`Server returned ${res.status}`);
+        let md = await res.text();
+        // The .md file starts with a top-level "# Methodology" heading so it
+        // reads correctly as a standalone document (e.g. viewed on GitHub).
+        // The wizard page already renders its own <h1>, so strip that first
+        // heading line here to avoid a duplicate title in-app.
+        md = md.replace(/^#\s+.+\n+/, '');
+        if (typeof marked === 'undefined') throw new Error('Markdown renderer failed to load.');
+        this.methodologyHtml = marked.parse(md);
+        this.methodologyStatus = 'ready';
+      } catch (err) {
+        this.methodologyError = err && err.message ? err.message : 'Unknown error.';
+        this.methodologyStatus = 'error';
+      }
+    },
+    closeMethodology() {
+      this.screen = this.preMethodologyScreen || 'intro';
     },
 
     // ================= review mode (sidebar back-navigation) =================
@@ -218,6 +344,7 @@ function wizardApp() {
       this.clearAutoAdvance();
       if (!this.overrideKey) return;
       if (this.overrideKey === 'none') {
+        this.setNavDirection('next');
         this.questionCursor = 0;
         this.furthestCursor = 0;
         this.screen = 'question';
@@ -231,6 +358,18 @@ function wizardApp() {
     },
 
     // ================= domain questions =================
+    // Hover-tooltip detail bubble for a single option. Only KSE1, PSJ1,
+    // OIS1, OIS4 options carry an `opt.detail` string; the icon itself is
+    // hidden via x-show="opt.detail" for every other question.
+    // Mouse hover and keyboard focus both open it; blur/mouseleave close
+    // it. No click handler — a tap focuses the button first, so a
+    // click-toggle would immediately re-close what focus just opened.
+    openDetail(letter) {
+      this.expandedDetail = letter;
+    },
+    closeDetail(letter) {
+      if (this.expandedDetail === letter) this.expandedDetail = null;
+    },
     selectAnswer(letter) {
       this.answers[this.currentQuestion.qid] = letter;
       this.scheduleAutoAdvance(() => this.questionNext());
@@ -238,6 +377,8 @@ function wizardApp() {
     questionNext() {
       this.clearAutoAdvance();
       if (!this.answers[this.currentQuestion.qid]) return;
+      this.expandedDetail = null;
+      this.setNavDirection('next');
       if (this.questionCursor < this.totalQuestions - 1) {
         this.questionCursor += 1;
         if (this.questionCursor > this.furthestCursor) this.furthestCursor = this.questionCursor;
@@ -248,6 +389,8 @@ function wizardApp() {
     },
     questionBack() {
       this.clearAutoAdvance();
+      this.expandedDetail = null;
+      this.setNavDirection('back');
       if (this.questionCursor > 0) {
         this.questionCursor -= 1;
       } else {
@@ -255,56 +398,172 @@ function wizardApp() {
       }
     },
 
-    // ================= results output =================
-    get summaryProse() {
+    // ================= grade range gauge =================
+    // Segments for the 0-100 horizontal gauge, one per GRADE_LOOKUP row, each
+    // sized as a percentage width of the full 0-100 range for use in inline
+    // style="width: X%" (visual only — the accessible text lives in
+    // gradeGaugeText() and the data table fallback, never in colour/position alone).
+    gradeRangeSegments() {
+      return Scoring.GRADE_LOOKUP.map((g) => ({
+        grade: g.grade,
+        shortLabel: g.grade.replace('Grade ', ''),
+        min: g.min,
+        max: g.max,
+        widthPct: round2((g.max - g.min + 0.01) / 100 * 100),
+        leftPct: round2((g.min / 100) * 100),
+        isCurrent: this.finalResult && this.finalResult.type === 'scored' && this.finalResult.grade === g.grade,
+      }));
+    },
+    currentGradeRange() {
+      if (!this.finalResult || this.finalResult.type !== 'scored') return null;
+      return Scoring.GRADE_LOOKUP.find((g) => g.grade === this.finalResult.grade) || null;
+    },
+    nextGradeRange() {
+      const current = this.currentGradeRange();
+      if (!current) return null;
+      const idx = Scoring.GRADE_LOOKUP.findIndex((g) => g.grade === current.grade);
+      if (idx < 0 || idx >= Scoring.GRADE_LOOKUP.length - 1) return null; // Grade 11 — no next grade
+      return Scoring.GRADE_LOOKUP[idx + 1];
+    },
+    // Inline style for the score marker position only — kept minimal and
+    // computed, per the instruction to reserve CSS for all other styling.
+    scoreMarkerStyle() {
+      if (!this.finalResult || this.finalResult.type !== 'scored') return '';
+      const clamped = Math.min(100, Math.max(0, this.finalResult.weightedTotal));
+      return `left: ${clamped}%;`;
+    },
+    // Plain-language text equivalent for the gauge, per the example format.
+    // This is the primary accessible description — the marker/graphic is
+    // supplementary, not the sole means of conveying the score.
+    gradeGaugeText() {
       const r = this.finalResult;
-      if (!r) return '';
-      const who = this.context.roleTitle || 'this role';
-      const sentences = [];
-      sentences.push(`This classification wizard recommends ${r.grade} for the ${who} role.`);
-      if (r.type === 'override') {
-        sentences.push(`This is a mandatory named-position classification under clause ${r.clause} (${r.label}), and does not rely on the scored assessment.`);
+      if (!r || r.type !== 'scored') return '';
+      const current = this.currentGradeRange();
+      if (!current) return '';
+      const score = r.weightedTotal.toFixed(2);
+      const min = current.min.toFixed(2);
+      const max = current.max.toFixed(2);
+      const base = `${score} sits within the ${current.grade} range: ${min}–${max}.`;
+      if (current.grade === 'Grade 11') {
+        return `${base} This score sits within the highest grade range.`;
+      }
+      const next = this.nextGradeRange();
+      if (!next) return base;
+      return `${base} ${next.grade} begins at ${next.min.toFixed(2)}.`;
+    },
+
+    // ================= weighted contribution breakdown =================
+    // "What drove the score" — per-domain contribution to the weighted total.
+    // contribution = domainScore * weight / 100; width is contribution as a
+    // percentage of the largest contribution, for relative bar sizing.
+    weightedContributions() {
+      const r = this.finalResult;
+      if (!r || r.type !== 'scored') return [];
+      const weights = r.band.weights;
+      const rows = this.domainOrder.map((d) => {
+        const score = r.domainScores[d];
+        const weight = weights[d];
+        const contribution = round2((score * weight) / 100);
+        return {
+          id: d,
+          name: this.domainMeta[d].name,
+          code: this.domainMeta[d].code,
+          score,
+          weight,
+          contribution,
+        };
+      });
+      const maxContribution = Math.max(...rows.map((row) => row.contribution), 0.01);
+      return rows.map((row) => ({ ...row, width: round2((row.contribution / maxContribution) * 100) }));
+    },
+
+    // ================= results output =================
+    /**
+     * Single source of truth for the summary content. Both the on-screen HTML
+     * version and the clipboard plain-text version are built from this, so they
+     * can never drift out of sync with each other.
+     */
+    get summaryData() {
+      const r = this.finalResult;
+      if (!r) return null;
+      return {
+        roleTitle: this.context.roleTitle || '—',
+        date: this.context.date,
+        grade: r.grade,
+        type: r.type,
+        clause: r.type === 'override' ? r.clause : null,
+        label: r.type === 'override' ? r.label : null,
+        weightedTotal: r.type === 'scored' ? r.weightedTotal : null,
+        bandLabel: r.type === 'scored' ? r.band.label : null,
+        domainScores: r.type === 'scored'
+          ? this.domainOrder.map((d) => ({ name: this.domainMeta[d].name, score: r.domainScores[d] }))
+          : null,
+        hrReviewRequired: r.type === 'scored' ? r.hrReviewRequired : false,
+        boundaryFlag: r.type === 'scored' ? r.boundaryFlag : false,
+        adjacentGrade: r.type === 'scored' ? r.adjacentGrade : null,
+        mismatchFlags: r.type === 'scored' ? r.mismatchFlags : [],
+      };
+    },
+    /**
+     * Rich-text (safe HTML) version for on-screen display: same structure/content
+     * as summaryPlainText (role, grade, basis, domain scores, review flags) but
+     * with headings and bold for key facts, plus a hyperlink on the tool's name.
+     * All dynamic values are escaped before insertion since this is rendered via x-html.
+     */
+    get summaryProseHtml() {
+      const d = this.summaryData;
+      if (!d) return '';
+      const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+      const wizardLink = '<a href="https://dreadnaughtasaurous.github.io/classification-wizard/" target="_blank" rel="noopener">Classification Wizard</a>';
+      const parts = [];
+      parts.push(`<strong>${wizardLink} — recommendation summary</strong>`);
+      parts.push('<span class="summary-agreement">Health and Allied Services, Managers and Administrative Workers (Victorian Public Sector) Enterprise Agreement 2025-2027, Schedule 3D Part 1</span>');
+      parts.push(`Role title: <strong>${esc(d.roleTitle)}</strong> &middot; Date: ${esc(d.date)}`);
+      parts.push(`Recommended grade: <strong>${esc(d.grade)}</strong>`);
+      if (d.type === 'override') {
+        parts.push(`Basis: <strong>mandatory named-position override</strong>, clause ${esc(d.clause)} (${esc(d.label)}).`);
       } else {
-        sentences.push(`This is based on a weighted assessment score of ${r.weightedTotal}/100, calculated within the ${r.band.label} weighting band.`);
-        if (r.hrReviewRequired) {
+        parts.push(`Basis: weighted assessment score <strong>${esc(d.weightedTotal)}/100</strong> (${esc(d.bandLabel)} weighting band).`);
+        const scoreItems = d.domainScores.map((s) => `<li>${esc(s.name)}: ${esc(s.score)}</li>`).join('');
+        parts.push(`Domain scores (0&ndash;100):<ul class="summary-domain-list">${scoreItems}</ul>`);
+        if (d.hrReviewRequired) {
           const reasons = [];
-          if (r.boundaryFlag) reasons.push(`the score sits close to the ${r.adjacentGrade} boundary`);
-          r.mismatchFlags.forEach((f) => reasons.push(f.message.replace(/\.$/, '').toLowerCase()));
-          sentences.push(`HR review is recommended before finalising this classification, because ${reasons.join('; ')}.`);
+          if (d.boundaryFlag) reasons.push(`score is close to a grade boundary; possible alternative grade: ${esc(d.adjacentGrade)}`);
+          d.mismatchFlags.forEach((f) => reasons.push(esc(f.message.replace(/\.$/, ''))));
+          parts.push(`<strong>HR review recommended</strong> &mdash; ${reasons.join('; ')}.`);
         } else {
-          sentences.push('No grade-boundary or domain-mismatch flags were raised during the assessment.');
+          parts.push('No boundary or mismatch flags were raised.');
         }
       }
-      sentences.push(`Assessment recorded on ${this.context.date}.`);
-      sentences.push('This is a classification recommendation, not a final determination — HR must confirm the final classification.');
-      return sentences.join(' ');
+      parts.push('This is a classification recommendation, not a final determination — <strong>HR must confirm the final classification</strong>.');
+      return parts.join('<br><br>');
     },
     get summaryPlainText() {
-      const r = this.finalResult;
-      if (!r) return '';
+      const d = this.summaryData;
+      if (!d) return '';
       const lines = [];
       lines.push('CLASSIFICATION WIZARD — RECOMMENDATION SUMMARY');
       lines.push('Health and Allied Services, Managers and Administrative Workers (Victorian Public Sector) Enterprise Agreement 2025-2027, Schedule 3D Part 1');
       lines.push('');
-      lines.push(`Role title: ${this.context.roleTitle || '—'}`);
-      lines.push(`Date: ${this.context.date}`);
+      lines.push(`Role title: ${d.roleTitle}`);
+      lines.push(`Date: ${d.date}`);
       lines.push('');
-      lines.push(`RECOMMENDED GRADE: ${r.grade}`);
+      lines.push(`RECOMMENDED GRADE: ${d.grade}`);
       lines.push('');
-      if (r.type === 'override') {
-        lines.push(`Basis: mandatory named-position override, clause ${r.clause} (${r.label}).`);
+      if (d.type === 'override') {
+        lines.push(`Basis: mandatory named-position override, clause ${d.clause} (${d.label}).`);
       } else {
-        lines.push(`Basis: weighted assessment score ${r.weightedTotal}/100 (${r.band.label} weighting band).`);
+        lines.push(`Basis: weighted assessment score ${d.weightedTotal}/100 (${d.bandLabel} weighting band).`);
         lines.push('');
         lines.push('Domain scores (0-100):');
-        this.domainOrder.forEach((d) => {
-          lines.push(`  - ${this.domainMeta[d].name}: ${r.domainScores[d]}`);
+        d.domainScores.forEach((s) => {
+          lines.push(`  - ${s.name}: ${s.score}`);
         });
         lines.push('');
-        if (r.hrReviewRequired) {
+        if (d.hrReviewRequired) {
           lines.push('HR REVIEW RECOMMENDED:');
-          if (r.boundaryFlag) lines.push(`  - Score is close to a grade boundary; possible alternative grade: ${r.adjacentGrade}.`);
-          r.mismatchFlags.forEach((f) => lines.push(`  - ${f.message}`));
+          if (d.boundaryFlag) lines.push(`  - Score is close to a grade boundary; possible alternative grade: ${d.adjacentGrade}.`);
+          d.mismatchFlags.forEach((f) => lines.push(`  - ${f.message}`));
         } else {
           lines.push('No boundary or mismatch flags were raised.');
         }
@@ -323,18 +582,6 @@ function wizardApp() {
         // Clipboard API can fail without HTTPS/permission — fail silently, button stays usable.
       }
     },
-    downloadSummary() {
-      const blob = new Blob([this.summaryPlainText], { type: 'text/plain' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      const safeRole = (this.context.roleTitle || 'role').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
-      a.href = url;
-      a.download = `classification-summary-${safeRole || 'role'}-${this.context.date}.txt`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    },
     printResults() {
       window.print();
     },
@@ -348,6 +595,8 @@ function wizardApp() {
       this.resultsReached = false;
       this.resultsUpdatedNotice = false;
       this._lastResultsSnapshot = null;
+      this.expandedDetail = null;
+      this.navDirection = 'next';
       this.context = { roleTitle: '', date: todayISO() };
       this.overrideKey = null;
       this.answers = {};
@@ -361,13 +610,17 @@ function wizardApp() {
       const tag = (e.target && e.target.tagName) || '';
       if (tag === 'INPUT' || tag === 'TEXTAREA') return;
 
+      if (this.screen === 'methodology') {
+        if (e.key === 'Escape' || e.key === 'Backspace') this.closeMethodology();
+        return;
+      }
       if (this.screen === 'override') {
         const idx = parseInt(e.key, 10);
         if (idx >= 1 && idx <= this.overrideQuestion.options.length) {
           this.selectOverride(this.overrideQuestion.options[idx - 1].key);
-        } else if (e.key === 'Enter') {
+        } else if (e.key === 'Enter' || e.key === 'ArrowDown') {
           this.overrideNext();
-        } else if (e.key === 'Backspace' || e.key === 'ArrowLeft') {
+        } else if (e.key === 'Backspace' || e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
           this.overrideBack();
         }
         return;
@@ -377,9 +630,9 @@ function wizardApp() {
         const opts = this.currentQuestion.options;
         if (idx >= 1 && idx <= opts.length) {
           this.selectAnswer(opts[idx - 1].letter);
-        } else if (e.key === 'Enter') {
+        } else if (e.key === 'Enter' || e.key === 'ArrowDown') {
           this.questionNext();
-        } else if (e.key === 'Backspace' || e.key === 'ArrowLeft') {
+        } else if (e.key === 'Backspace' || e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
           this.questionBack();
         }
       }
@@ -395,6 +648,10 @@ function buildFlatQuestions() {
     });
   });
   return flat;
+}
+
+function round2(n) {
+  return Math.round(n * 100) / 100;
 }
 
 function todayISO() {

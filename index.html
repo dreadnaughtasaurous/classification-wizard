@@ -60,11 +60,32 @@
         </li>
         <template x-for="d in domainOrder" :key="d">
           <li>
-            <button type="button" class="step step--domain" :class="stepStatus(d)" @click="jumpTo(d)" :disabled="!canJumpTo(d)">
-              <span class="step-dot" aria-hidden="true"></span>
-              <span class="step-label" x-text="domainMeta[d].name"></span>
-              <span class="step-count" x-show="!overrideResult" x-text="domainAnsweredCount(d) + '/' + 4"></span>
-            </button>
+            <div class="step-group">
+              <button type="button" class="step step--domain" :class="stepStatus(d)" @click="jumpTo(d)" :disabled="!canJumpTo(d)">
+                <span class="step-dot" aria-hidden="true"></span>
+                <span class="step-label" x-text="domainMeta[d].name"></span>
+                <span class="step-count" x-show="!overrideResult" x-text="domainAnsweredCount(d) + '/' + 4"></span>
+              </button>
+              <button type="button" class="step-expand-btn" x-show="!overrideResult"
+                      @click="toggleDomainExpand(d)"
+                      :aria-expanded="isDomainExpanded(d)"
+                      :aria-controls="'substeps-' + d"
+                      :aria-label="(isDomainExpanded(d) ? 'Collapse' : 'Expand') + ' ' + domainMeta[d].name + ' questions'">
+                <svg :class="{ 'step-expand-icon--open': isDomainExpanded(d) }" class="step-expand-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </button>
+            </div>
+            <ul class="substep-list" :id="'substeps-' + d" x-show="!overrideResult && isDomainExpanded(d)" x-cloak>
+              <template x-for="(q, qi) in domainQuestions(d)" :key="q.qid">
+                <li>
+                  <button type="button" class="substep" :class="substepStatus(q)" @click="jumpToQuestion(q.qid)" :disabled="!canJumpToQuestion(q.qid)">
+                    <span class="substep-dot" aria-hidden="true"></span>
+                    <span class="substep-label"><span x-text="(qi + 1) + '.'"></span> <span x-text="q.text"></span></span>
+                  </button>
+                </li>
+              </template>
+            </ul>
           </li>
         </template>
         <li>
@@ -74,6 +95,11 @@
           </button>
         </li>
       </ol>
+
+      <button type="button" class="step--static" :class="{ current: screen === 'methodology' }" @click="jumpTo('methodology')">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/><path d="M12 16v-4M12 8h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        <span>How this works</span>
+      </button>
 
       <p class="sidebar-footnote">Decision-support tool only.<br/>HR must confirm final classification.</p>
     </nav>
@@ -103,68 +129,95 @@
 
       <!-- ---------- NAMED OVERRIDE ---------- -->
       <section class="screen" x-show="screen === 'override'" x-cloak>
-        <p class="eyebrow">Named position check</p>
-        <h1 x-text="overrideQuestion.text"></h1>
-        <p class="lede" x-text="overrideQuestion.subtitle"></p>
+        <!-- Keyed single-item x-for so this node is destroyed/recreated (not just
+             re-rendered) — that's what makes the qwiz-anim-* entrance animation
+             fire. See style.css "Typeform-style question transitions". -->
+        <template x-for="ov in [navTick]" :key="ov">
+          <div :class="navDirection === 'next' ? 'qwiz-anim-next' : 'qwiz-anim-back'">
+            <p class="eyebrow">Named position check</p>
+            <h1 x-text="overrideQuestion.text"></h1>
+            <p class="lede" x-text="overrideQuestion.subtitle"></p>
 
-        <div class="options options--override" role="radiogroup" :aria-label="overrideQuestion.text">
-          <template x-for="(opt, i) in overrideQuestion.options" :key="opt.letter">
-            <button type="button" class="option-btn" :class="{ selected: overrideKey === opt.key }" role="radio" :aria-checked="overrideKey === opt.key" @click="selectOverride(opt.key)">
-              <span class="option-key" x-text="i + 1"></span>
-              <span class="option-label">
-                <span x-text="opt.label"></span>
-                <span class="option-meta" x-show="opt.grade" x-text="opt.grade + ' · clause ' + opt.clause"></span>
-              </span>
-            </button>
-          </template>
-        </div>
-
-        <div class="nav-row">
-          <button type="button" class="btn btn-ghost" @click="overrideBack()">&larr; Back</button>
-          <button type="button" class="btn btn-primary" :disabled="!overrideKey" @click="overrideNext()">
-            <span x-text="overrideKey && overrideKey !== 'none' ? 'View result' : 'Continue'"></span> &rarr;
-          </button>
-        </div>
+            <div class="options options--override" role="radiogroup" :aria-label="overrideQuestion.text">
+              <template x-for="(opt, i) in overrideQuestion.options" :key="opt.letter">
+                <button type="button" class="option-btn" :class="{ selected: overrideKey === opt.key }" role="radio" :aria-checked="overrideKey === opt.key" @click="selectOverride(opt.key)">
+                  <span class="option-key" x-text="i + 1"></span>
+                  <span class="option-label">
+                    <span x-text="opt.label"></span>
+                    <span class="option-meta" x-show="opt.grade" x-text="opt.grade + ' · clause ' + opt.clause"></span>
+                  </span>
+                </button>
+              </template>
+            </div>
+          </div>
+        </template>
       </section>
 
       <!-- ---------- DOMAIN QUESTIONS ---------- -->
       <section class="screen" x-show="screen === 'question'" x-cloak>
-        <template x-if="currentQuestion">
-          <div>
-            <div class="callout callout--review" x-show="inReviewMode" x-cloak>
-              <p>
-                You're reviewing an earlier question.
-                <button type="button" class="link-btn" @click="resumeProgress()">Continue to where you left off &rarr;</button>
+        <!-- Keyed on navTick (guarded by currentQuestion) so this node is
+             destroyed/recreated on every navigation, not just when
+             direction changes — that's what replays the qwiz-anim-*
+             entrance animation each time. -->
+        <template x-for="qt in (currentQuestion ? [navTick] : [])" :key="qt">
+          <div :class="navDirection === 'next' ? 'qwiz-anim-next' : 'qwiz-anim-back'">
+              <div class="callout callout--review" x-show="inReviewMode" x-cloak>
+                <p>
+                  You're reviewing an earlier question.
+                  <button type="button" class="link-btn" @click="resumeProgress()">Continue to where you left off &rarr;</button>
+                </p>
+              </div>
+
+              <p class="eyebrow">
+                Domain <span x-text="currentDomainIndex + 1"></span> of 6:
+                <span x-text="domainMeta[currentDomainId].name"></span>
+                &middot; Question <span x-text="currentQuestion.indexInDomain + 1"></span> of <span x-text="currentQuestion.domainTotal"></span>
               </p>
-            </div>
+              <h1 x-text="currentQuestion.text"></h1>
+              <p class="lede" x-show="currentQuestion.subtitle" x-text="currentQuestion.subtitle"></p>
 
-            <p class="eyebrow">
-              Domain <span x-text="currentDomainIndex + 1"></span> of 6:
-              <span x-text="domainMeta[currentDomainId].name"></span>
-              &middot; Question <span x-text="currentQuestion.indexInDomain + 1"></span> of <span x-text="currentQuestion.domainTotal"></span>
-            </p>
-            <h1 x-text="currentQuestion.text"></h1>
-            <p class="lede" x-show="currentQuestion.subtitle" x-text="currentQuestion.subtitle"></p>
+              <div class="progress-track" aria-hidden="true">
+                <div class="progress-fill" :style="`width: ${(answeredCount / totalQuestions) * 100}%`"></div>
+              </div>
 
-            <div class="progress-track" aria-hidden="true">
-              <div class="progress-fill" :style="`width: ${(answeredCount / totalQuestions) * 100}%`"></div>
-            </div>
-
-            <div class="options" role="radiogroup" :aria-label="currentQuestion.text">
-              <template x-for="(opt, i) in currentQuestion.options" :key="opt.letter">
-                <button type="button" class="option-btn" :class="{ selected: answers[currentQuestion.qid] === opt.letter }" role="radio" :aria-checked="answers[currentQuestion.qid] === opt.letter" @click="selectAnswer(opt.letter)">
-                  <span class="option-key" x-text="i + 1"></span>
-                  <span class="option-label" x-text="opt.label"></span>
-                </button>
-              </template>
-            </div>
-
-            <div class="nav-row">
-              <button type="button" class="btn btn-ghost" @click="questionBack()">&larr; Back</button>
-              <button type="button" class="btn btn-primary" :disabled="!answers[currentQuestion.qid]" @click="questionNext()">
-                <span x-text="questionCursor === totalQuestions - 1 ? 'See results' : 'Next'"></span> &rarr;
-              </button>
-            </div>
+              <div class="options" role="radiogroup" :aria-label="currentQuestion.text">
+                <template x-for="(opt, i) in currentQuestion.options" :key="opt.letter">
+                  <div class="option-wrap">
+                    <button type="button" class="option-btn" :class="{ selected: answers[currentQuestion.qid] === opt.letter }" role="radio" :aria-checked="answers[currentQuestion.qid] === opt.letter" @click="selectAnswer(opt.letter)">
+                      <span class="option-key" x-text="i + 1"></span>
+                      <span class="option-label" x-text="opt.label"></span>
+                    </button>
+                    <!-- Hover-tooltip info icon. Mouse hover and keyboard
+                         focus both show the bubble; on touch, tapping the
+                         icon focuses it (showing the bubble) and tapping
+                         elsewhere blurs it (hiding it) — no separate click
+                         handler needed. Sits over the option-btn's corner,
+                         not nested inside it (two interactive controls,
+                         kept as siblings in .option-wrap for valid,
+                         accessible markup). -->
+                    <button
+                      type="button"
+                      class="option-detail-toggle"
+                      x-show="opt.detail"
+                      x-cloak
+                      @mouseenter="openDetail(opt.letter)"
+                      @mouseleave="closeDetail(opt.letter)"
+                      @focus="openDetail(opt.letter)"
+                      @blur="closeDetail(opt.letter)"
+                      :aria-expanded="expandedDetail === opt.letter"
+                      :aria-describedby="expandedDetail === opt.letter ? (currentQuestion.qid + '-detail-' + opt.letter) : null"
+                      :aria-label="'More detail on option ' + (i + 1)"
+                    ></button>
+                    <p
+                      class="option-detail"
+                      :id="currentQuestion.qid + '-detail-' + opt.letter"
+                      role="tooltip"
+                      x-show="opt.detail && expandedDetail === opt.letter"
+                      x-text="opt.detail"
+                    ></p>
+                  </div>
+                </template>
+              </div>
           </div>
         </template>
       </section>
@@ -185,6 +238,58 @@
             <div class="grade-banner">
               <span class="grade-banner-label">Recommended grade</span>
               <span class="grade-banner-value" x-text="finalResult.grade"></span>
+            </div>
+
+            <!-- Grade range gauge (scored path only — no weighted score on override) -->
+            <div class="gauge-block" x-show="finalResult.type === 'scored'" x-cloak>
+              <h2 class="sr-only">Grade range gauge</h2>
+              <div class="gauge-timeline" role="img" :aria-label="gradeGaugeText()">
+                <!-- Grade labels, above the line -->
+                <div class="gauge-labels">
+                  <template x-for="seg in gradeRangeSegments()" :key="seg.grade + '-label'">
+                    <div
+                      class="gauge-label"
+                      :class="{ 'gauge-label--current': seg.isCurrent }"
+                      :style="'left:' + seg.leftPct + '%; width:' + seg.widthPct + '%;'"
+                    >
+                      <span x-text="seg.shortLabel"></span>
+                    </div>
+                  </template>
+                </div>
+
+                <!-- The horizontal line, with a tick at every grade boundary -->
+                <div class="gauge-line">
+                  <template x-for="tick in gradeRangeSegments()" :key="tick.grade + '-tick'">
+                    <span class="gauge-tick" :style="'left:' + tick.leftPct + '%;'"></span>
+                  </template>
+                  <span class="gauge-tick gauge-tick--end" style="left: 100%;"></span>
+                </div>
+
+                <!-- Score marker, below the line: upward-pointing triangle + value -->
+                <div class="gauge-marker" :style="scoreMarkerStyle()" aria-hidden="true">
+                  <span class="gauge-marker-triangle"></span>
+                  <span class="gauge-marker-value" x-text="finalResult.weightedTotal.toFixed(2)"></span>
+                </div>
+              </div>
+              <!-- Text equivalent — the primary, non-visual way this score is communicated -->
+              <p class="gauge-text" x-text="gradeGaugeText()"></p>
+              <details class="gauge-table-details">
+                <summary>View all grade ranges</summary>
+                <table class="score-table gauge-table">
+                  <caption class="sr-only">Grade range table (accessible alternative to the gauge above)</caption>
+                  <thead>
+                    <tr><th scope="col">Grade</th><th scope="col">Range</th></tr>
+                  </thead>
+                  <tbody>
+                    <template x-for="seg in gradeRangeSegments()" :key="seg.grade + '-row'">
+                      <tr :class="{ 'gauge-table-row--current': seg.isCurrent }">
+                        <td x-text="seg.grade"></td>
+                        <td x-text="seg.min.toFixed(2) + '–' + seg.max.toFixed(2)"></td>
+                      </tr>
+                    </template>
+                  </tbody>
+                </table>
+              </details>
             </div>
 
             <!-- HR review banner (blocking: genuine toss-up or mismatch) -->
@@ -223,23 +328,40 @@
                   <div class="chart-wrap">
                     <canvas x-ref="radarCanvas" width="360" height="360" role="img" :aria-label="'Radar chart of domain scores: ' + domainOrder.map(d => domainMeta[d].code + ' ' + finalResult.domainScores[d]).join(', ')"></canvas>
                   </div>
-                  <table class="score-table">
-                    <caption class="sr-only">Domain score data table (accessible alternative to the radar chart above)</caption>
+                  <p class="chart-footnote sr-only">The exact domain scores behind this chart are listed in the "What drove the score" table below.</p>
+                </div>
+
+                <div class="contribution-block">
+                  <h2>What drove the score</h2>
+                  <table class="score-table contribution-table">
+                    <caption class="sr-only">Weighted contribution of each domain to the final score</caption>
                     <thead>
-                      <tr><th scope="col">Domain</th><th scope="col">Score (0–100)</th></tr>
+                      <tr>
+                        <th scope="col">Domain</th>
+                        <th scope="col">Score</th>
+                        <th scope="col">Weight</th>
+                        <th scope="col">Contribution</th>
+                      </tr>
                     </thead>
                     <tbody>
-                      <template x-for="d in domainOrder" :key="d">
+                      <template x-for="row in weightedContributions()" :key="row.id">
                         <tr>
-                          <td x-text="domainMeta[d].name"></td>
-                          <td x-text="finalResult.domainScores[d]"></td>
+                          <td>
+                            <span x-text="row.name"></span>
+                            <div class="contribution-bar-track" aria-hidden="true">
+                              <div class="contribution-bar-fill" :style="'width:' + row.width + '%;'"></div>
+                            </div>
+                          </td>
+                          <td x-text="row.score + '/100'"></td>
+                          <td x-text="row.weight + '%'"></td>
+                          <td x-text="row.contribution + ' pts'"></td>
                         </tr>
                       </template>
                     </tbody>
                   </table>
                   <p class="chart-footnote">
-                    Weighted total: <strong x-text="finalResult.weightedTotal"></strong>/100
-                    &middot; Weighting band: <span x-text="finalResult.band.label"></span>
+                    Sum of contributions: <strong x-text="finalResult.weightedTotal"></strong>/100 (minor rounding differences may occur)
+                    &middot; Weighting band: <span x-text="finalResult.band.label"></span>.
                   </p>
                 </div>
 
@@ -268,19 +390,19 @@
             <!-- Summary for copy/export -->
             <div class="summary-block">
               <h2>Summary for email or HR form</h2>
-              <p class="summary-prose" x-text="summaryProse"></p>
+              <div class="summary-prose" x-html="summaryProseHtml"></div>
               <div class="summary-actions">
                 <button type="button" class="btn btn-secondary" @click="copySummary()">
                   <span x-show="!copyConfirmed">Copy summary</span>
                   <span x-show="copyConfirmed" x-cloak>Copied &#10003;</span>
                 </button>
-                <button type="button" class="btn btn-secondary" @click="downloadSummary()">Download as text</button>
                 <button type="button" class="btn btn-secondary btn-print-only" @click="printResults()">Print this page</button>
               </div>
             </div>
 
             <p class="disclaimer">
               This is a classification recommendation, not a final determination. HR must confirm final classification.
+              <button type="button" class="btn-ghost btn-inline-link" @click="jumpTo('methodology')">How this recommendation was calculated</button>
             </p>
 
             <button type="button" class="btn btn-ghost" @click="resetWizard()">Start a new assessment</button>
@@ -288,13 +410,68 @@
         </template>
       </section>
 
+      <!-- ---------- METHODOLOGY ---------- -->
+      <section class="screen screen--methodology" x-show="screen === 'methodology'" x-cloak>
+        <p class="eyebrow">Reference</p>
+        <h1>How this recommendation works</h1>
+        <p class="lede">A plain-language explanation of the scoring logic behind this wizard, for anyone who wants to understand — not just see — the recommendation.</p>
+
+        <div class="methodology-content" x-show="methodologyStatus === 'ready'" x-html="methodologyHtml" x-cloak></div>
+
+        <div class="methodology-loading" x-show="methodologyStatus === 'loading'" x-cloak>
+          <p class="lede">Loading methodology&hellip;</p>
+        </div>
+
+        <div class="callout callout--warning" x-show="methodologyStatus === 'error'" x-cloak>
+          <h2>Couldn't load the methodology page</h2>
+          <p>
+            <span x-text="methodologyError"></span>
+            If you're opening this file directly (e.g. double-clicking <code>index.html</code>), browsers block local file fetches —
+            serve the folder over HTTP instead (see the project README), or view
+            <a href="https://dreadnaughtasaurous.github.io/classification-wizard/" target="_blank" rel="noopener">the live site</a>.
+          </p>
+          <button type="button" class="btn btn-secondary" @click="loadMethodology(true)">Try again</button>
+        </div>
+
+        <button type="button" class="btn btn-ghost" @click="closeMethodology()">&larr; Back</button>
+      </section>
+
     </main>
+
+    <!-- ===================== FAB up/down nav ===================== -->
+    <!-- Replaces the old inline Back/Next buttons on the override and
+         question screens with a single fixed Typeform-style control.
+         Up = previous question, Down = next question / see results. -->
+    <div class="fab-nav" x-show="screen === 'override' || screen === 'question'" x-cloak>
+      <button
+        type="button"
+        class="fab-btn fab-btn--up"
+        @click="screen === 'override' ? overrideBack() : questionBack()"
+        aria-label="Navigate to previous question"
+      >
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <path fill="currentColor" d="M6.422 4.932a2.5 2.5 0 0 1 3.346.172l5.19 5.189.067.076a1 1 0 0 1-1.406 1.406l-.076-.068-5.19-5.19a.5.5 0 0 0-.706 0l-5.19 5.19a1 1 0 1 1-1.414-1.414l5.19-5.19z"/>
+        </svg>
+      </button>
+      <button
+        type="button"
+        class="fab-btn fab-btn--down"
+        :disabled="screen === 'override' ? !overrideKey : !answers[currentQuestion.qid]"
+        @click="screen === 'override' ? overrideNext() : questionNext()"
+        :aria-label="screen === 'question' && questionCursor === totalQuestions - 1 ? 'View results' : (screen === 'override' && overrideKey && overrideKey !== 'none' ? 'View result' : 'Navigate to next question')"
+      >
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <path fill="currentColor" d="M6.422 11.068a2.5 2.5 0 0 0 3.346-.171l5.189-5.19.068-.076a1 1 0 0 0-1.406-1.406l-.076.068-5.19 5.19a.5.5 0 0 1-.707 0l-5.189-5.19a1 1 0 1 0-1.414 1.414l5.19 5.19z"/>
+        </svg>
+      </button>
+    </div>
   </div>
 
   <script src="js/questions-data.js" defer></script>
   <script src="js/scoring.js" defer></script>
   <script src="js/chart.js" defer></script>
   <script src="js/app.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked@13.0.3/marked.min.js" defer></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js" defer></script>
   <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js" defer></script>
 </body>
