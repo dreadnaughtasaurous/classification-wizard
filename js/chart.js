@@ -24,7 +24,7 @@ const ChartHelper = (function () {
       chartInstance = null;
     }
 
-    const brand = cssVar('--color-brand') || '#3451b2';
+    const brand = cssVar('--color-brand') || '#4b2a72';
     const text = cssVar('--color-text') || '#3c3c43';
     const divider = cssVar('--color-divider') || '#e2e2e3';
 

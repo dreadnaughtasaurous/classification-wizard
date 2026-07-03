@@ -1,7 +1,7 @@
 /* ===================== Design tokens ===================== */
 :root {
-  --color-brand: #d91b53;
-  --color-brand-soft: #fce7ee;
+  --color-brand: #4b2a72;
+  --color-brand-soft: #f1eef6;
   --color-bg: #ffffff;
   --color-bg-soft: #f4f6fa;
   --color-text: #263142;
@@ -12,7 +12,8 @@
   --color-warning-text: #704000;
   --color-info-bg: #eaf1fb;
   --color-info-border: #b7c9e7;
-  --font-family: 'Inter', system-ui, sans-serif;
+  --font-family: 'Karla', Arial, sans-serif;
+  --font-family-heading: 'Work Sans', Arial, sans-serif;
 
   --radius-sm: 8px;
   --radius-md: 14px;
@@ -24,8 +25,8 @@
 }
 
 [data-theme='dark'] {
-  --color-brand: #ff7aa2;
-  --color-brand-soft: #3b1725;
+  --color-brand: #b5a8c3;
+  --color-brand-soft: #322a44;
   --color-bg: #121722;
   --color-bg-soft: #1a2230;
   --color-text: #e7ebf2;
@@ -52,6 +53,7 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 h1, h2, h3, p, ul, ol, figure { margin: 0; }
+h1, h2, h3 { font-family: var(--font-family-heading); font-weight: 700; }
 button { font-family: inherit; }
 [x-cloak] { display: none !important; }
 .sr-only {
